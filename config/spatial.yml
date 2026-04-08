@@ -1,0 +1,43 @@
+boston_bbox:
+  min_lat: 42.2
+  max_lat: 42.5
+  min_lon: -71.3
+  max_lon: -70.9
+
+scoring_radii:
+  crime_m: 500
+  complaints_m: 500
+  citizen_m: 500
+  amenities_m: 800
+  transit_m: 800
+
+zip_to_neighborhood:
+  "02134": "Allston"
+  "02135": "Brighton"
+  "02163": "Allston"
+  "02215": "Fenway/Kenmore"
+  "02116": "Back Bay"
+  "02115": "Fenway/Longwood"
+  "02118": "South End"
+  "02119": "Roxbury"
+  "02120": "Mission Hill"
+  "02121": "Dorchester"
+  "02122": "Dorchester"
+  "02124": "Dorchester"
+  "02125": "Dorchester"
+  "02126": "Mattapan"
+  "02127": "South Boston"
+  "02128": "East Boston"
+  "02129": "Charlestown"
+  "02130": "Jamaica Plain"
+  "02131": "Roslindale"
+  "02132": "West Roxbury"
+  "02136": "Hyde Park"
+  "02199": "Back Bay"
+  "02210": "Seaport"
+  "02111": "Downtown/Chinatown"
+  "02108": "Beacon Hill"
+  "02109": "Downtown"
+  "02110": "Financial District"
+  "02113": "North End"
+  "02114": "West End/Beacon Hill"

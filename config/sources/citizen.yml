@@ -1,0 +1,18 @@
+source: "citizen"
+target_table: "RAW.CITIZEN_INCIDENTS"
+
+connection:
+  base_url: "https://citizen.com/api/incident/trending"
+  bbox_buffer: 0.02
+  limit: 50
+
+center:
+  lat: 42.3534
+  lon: -71.1323
+
+schedule: "hourly"
+
+classification:
+  enabled: true
+  field: "title"
+  prompt_key: "citizen"

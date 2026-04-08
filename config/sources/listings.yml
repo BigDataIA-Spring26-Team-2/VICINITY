@@ -1,0 +1,21 @@
+source: "listings"
+target_table: "RAW.LISTINGS"
+
+homeharvest:
+  locations:
+    - "Boston, MA"
+    - "Cambridge, MA"
+    - "Somerville, MA"
+    - "Brookline, MA"
+  listing_type: "for_rent"
+  past_days: 7
+  delay_between_calls: 4.0
+
+dedup:
+  key_fields: ["source", "source_native_id"]
+  source_id_field: "property_id"
+
+classification:
+  enabled: true
+  field: "description_text"
+  prompt_key: "listings"

@@ -1,0 +1,18 @@
+source: "reddit"
+target_table: "RAW.LIFESTYLE_SIGNALS"
+
+subreddits:
+  - "boston"
+  - "bostonhousing"
+
+user_agent: "Vicinity/1.0 (educational)"
+
+rate_limit:
+  delay_between_requests: 2.0
+
+schedule: "weekly"
+
+classification:
+  enabled: true
+  type: "per_record"
+  prompt_key: "reddit"

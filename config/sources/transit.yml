@@ -1,0 +1,11 @@
+source: "transit"
+target_table: "RAW.TRANSIT_STOPS"
+
+connection:
+  base_url: "https://api-v3.mbta.com"
+  page_size: 500
+
+schedule: "monthly"
+
+classification:
+  enabled: false

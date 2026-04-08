@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  api:
+    build: ..
+    env_file:
+      - ../.env
+    ports:
+      - "8000:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  streamlit:
+    build: ..
+    env_file:
+      - ../.env
+    ports:
+      - "8501:8501"
+    command: streamlit run streamlit_app/app.py --server.port 8501
+
+volumes:
+  redis-data:

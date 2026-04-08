@@ -13,10 +13,9 @@ class Settings(BaseSettings):
     snowflake_warehouse: str
     snowflake_role: str
 
-    # Future: add Redis, Pinecone, OpenAI keys here
-    # redis_url: str = "redis://localhost:6379"
-    # pinecone_api_key: SecretStr
-    # openai_api_key: SecretStr
+    # LLM
+    deepseek_api_key: SecretStr = SecretStr("")
+    openai_api_key: SecretStr = SecretStr("")
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

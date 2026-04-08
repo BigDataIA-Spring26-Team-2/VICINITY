@@ -1,0 +1,14 @@
+retry:
+  max_attempts: 3
+  backoff_base: 2.0
+  backoff_max: 30.0
+
+scheduling:
+  crime: "0 6 * * *"
+  complaints_311: "0 6 * * *"
+  citizen: "0 * * * *"
+  listings: "0 7 * * *"
+  transit: "0 3 1 * *"
+  amenities: "0 4 1 * *"
+  scoring: "0 8 * * *"
+  summary: "0 9 * * *"

@@ -1,0 +1,45 @@
+source: "311"
+target_table: "RAW.COMPLAINTS_311"
+
+connection:
+  base_url: "https://data.boston.gov/api/3/action/datastore_search"
+  page_size: 1000
+  max_pages: 500
+
+variants:
+  2025_legacy:
+    resource_id: "9d7c2214-4709-478a-a2e8-fb2020a5bb94"
+    natural_key: "case_enquiry_id"
+    date_field: "open_dt"
+    lat_field: "latitude"
+    lon_field: "longitude"
+  2026:
+    resource_id: "1a0b420d-99f1-4887-9851-990b2a5a6e17"
+    natural_key: "case_enquiry_id"
+    date_field: "open_dt"
+    lat_field: "latitude"
+    lon_field: "longitude"
+  new_system:
+    resource_id: "254adca6-64ab-4c5c-9fc0-a6da622be185"
+    natural_key: "case_id"
+    date_field: "open_date"
+    lat_field: "latitude"
+    lon_field: "longitude"
+    field_mapping:
+      case_enquiry_id: "case_id"
+      open_dt: "open_date"
+      type: "service_name"
+      case_title: "case_topic"
+      closed_dt: "close_date"
+      street: "street_name"
+      zip_code: "zip_code"
+
+rate_limit:
+  requests_per_second: 5
+  backoff_base: 2.0
+  backoff_max: 30.0
+
+classification:
+  enabled: true
+  field: "type"
+  prompt_key: "complaints_311"

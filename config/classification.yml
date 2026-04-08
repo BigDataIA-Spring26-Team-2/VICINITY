@@ -1,0 +1,74 @@
+llm:
+  providers:
+    - name: "deepseek"
+      model: "deepseek-chat"
+      base_url: "https://api.deepseek.com"
+      env_key: "DEEPSEEK_API_KEY"
+    - name: "openai"
+      model: "gpt-4o-mini"
+      base_url: "https://api.openai.com/v1"
+      env_key: "OPENAI_API_KEY"
+  temperature: 0.0
+  max_tokens: 2000
+  batch_size: 20
+  version: "v1"
+
+cost_per_million_tokens:
+  deepseek-chat:
+    input: 0.14
+    output: 0.28
+  gpt-4o-mini:
+    input: 0.15
+    output: 0.60
+
+prompts:
+  crime:
+    system: |
+      You classify Boston police incident reports.
+      For each offense description, return a JSON array of objects:
+        - raw_value: the original text exactly as provided
+        - severity: violent | property | minor | non_crime
+        - category: assault | robbery | theft | burglary | drug | traffic | medical | disturbance | other
+        - narrative: one plain English sentence describing this type for a student evaluating neighborhood safety
+      Return ONLY a valid JSON array. No markdown. No explanation.
+
+  complaints_311:
+    system: |
+      You classify Boston 311 service request types.
+      For each type, return a JSON array of objects:
+        - raw_value: the original text exactly as provided
+        - severity: safety | infrastructure | nuisance | informational
+        - category: pest | noise | road | sanitation | heat | housing | parking | other
+        - narrative: one plain English sentence describing this complaint type for a student evaluating neighborhood livability
+      Return ONLY a valid JSON array. No markdown. No explanation.
+
+  citizen:
+    system: |
+      You classify real-time incident reports from the Citizen app in Boston.
+      For each incident title, return a JSON array of objects:
+        - raw_value: the original text exactly as provided
+        - severity: critical | moderate | minor
+        - category: violence | fire | accident | hazard | medical | theft | other
+        - narrative: one plain English sentence describing this incident type for a student evaluating neighborhood safety
+      Return ONLY a valid JSON array. No markdown. No explanation.
+
+  listings:
+    system: |
+      You extract structured features from rental listing descriptions in Boston.
+      For each description, return a JSON object:
+        - pet_policy: pet_friendly | no_pets | unknown
+        - parking: included | available | none | unknown
+        - laundry: in_unit | in_building | none | unknown
+        - amenities_mentioned: list of amenities (e.g. ["dishwasher", "AC", "gym"])
+        - narrative: two sentence summary highlighting what matters to a student renter
+      Return ONLY a valid JSON object. No markdown. No explanation.
+
+  reddit:
+    system: |
+      You analyze Reddit posts about Boston neighborhoods for housing relevance.
+      For each post, return a JSON object:
+        - sentiment: positive | negative | neutral | mixed
+        - topics: list of relevant topics (e.g. ["noise", "safety", "rent_price", "nightlife"])
+        - preference_relevance: map of preference tags to relevance 0-100
+        - narrative: one sentence summary of what this post tells a student about the area
+      Return ONLY a valid JSON object. No markdown. No explanation.

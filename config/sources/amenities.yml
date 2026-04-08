@@ -1,0 +1,49 @@
+source: "amenities"
+target_table: "RAW.AMENITIES"
+
+connection:
+  base_url: "https://overpass-api.de/api/interpreter"
+  timeout: 45
+
+queries:
+  - key: "shop"
+    value: "supermarket"
+  - key: "shop"
+    value: "convenience"
+  - key: "shop"
+    value: "laundry"
+  - key: "amenity"
+    value: "pharmacy"
+  - key: "leisure"
+    value: "fitness_centre"
+  - key: "amenity"
+    value: "cafe"
+  - key: "amenity"
+    value: "restaurant"
+  - key: "amenity"
+    value: "library"
+
+seed_locations:
+  Allston: [42.3534, -71.1323]
+  Brighton: [42.3464, -71.1627]
+  Fenway: [42.3429, -71.1003]
+  Back Bay: [42.3503, -71.0810]
+  South End: [42.3388, -71.0685]
+  Dorchester: [42.2987, -71.0603]
+  Jamaica Plain: [42.3097, -71.1151]
+  Roxbury: [42.3152, -71.0901]
+  South Boston: [42.3381, -71.0476]
+  East Boston: [42.3702, -71.0389]
+  Charlestown: [42.3782, -71.0602]
+  Cambridge: [42.3736, -71.1209]
+  Somerville: [42.3876, -71.0995]
+
+radius_m: 1000
+
+rate_limit:
+  delay_between_queries: 5.0
+
+schedule: "monthly"
+
+classification:
+  enabled: false

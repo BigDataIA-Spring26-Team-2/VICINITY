@@ -1,0 +1,35 @@
+source: "crime"
+target_table: "RAW.CRIME_INCIDENTS"
+
+connection:
+  base_url: "https://data.boston.gov/api/3/action/datastore_search"
+  resource_id: "b973d8cb-eeb2-4e7e-99da-c92938efc9c0"
+  page_size: 1000
+  max_pages: 500
+
+keys:
+  natural_key: "INCIDENT_NUMBER"
+  date_field: "OCCURRED_ON_DATE"
+
+fields:
+  incident_id: "INCIDENT_NUMBER"
+  offense_code: "OFFENSE_CODE"
+  offense_description: "OFFENSE_DESCRIPTION"
+  district: "DISTRICT"
+  street: "STREET"
+  shooting: "SHOOTING"
+  hour: "HOUR"
+  day_of_week: "DAY_OF_WEEK"
+  occurred_on_date: "OCCURRED_ON_DATE"
+  lat: "Lat"
+  lon: "Long"
+
+rate_limit:
+  requests_per_second: 5
+  backoff_base: 2.0
+  backoff_max: 30.0
+
+classification:
+  enabled: true
+  field: "offense_description"
+  prompt_key: "crime"
