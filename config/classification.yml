@@ -32,7 +32,7 @@ prompts:
         - narrative: one plain English sentence describing this type for a student evaluating neighborhood safety
       Return ONLY a valid JSON array. No markdown. No explanation.
 
-  complaints_311:
+  "311":
     system: |
       You classify Boston 311 service request types.
       For each type, return a JSON array of objects:

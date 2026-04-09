@@ -177,40 +177,61 @@ class CrimePipeline(BasePipeline):
     # ── Transform ────────────────────────────────────────────
 
     def _transform(self, raw: dict, classifications: dict,
-                   v: RecordValidator) -> dict | None:
-        f = self._fields
-        offense_desc = v.to_str(raw.get(f["offense_description"]))
-        classification = classifications.get(offense_desc, {})
+                    v: RecordValidator) -> dict | None:
+            f = self._fields
+            offense_desc = v.to_str(raw.get(f["offense_description"]))
+            classification = classifications.get(offense_desc, {})
 
-        return {
-            "incident_id": v.to_str(raw.get(f["incident_id"])),
-            "offense_code": v.to_str(raw.get(f["offense_code"]), max_len=10),
-            "offense_description": v.to_str(offense_desc, max_len=100),
-            "severity": classification.get("severity", "unknown"),
-            "occurred_on_date": v.to_str(raw.get(f["occurred_on_date"])),
-            "hour": v.to_int(raw.get(f["hour"])),
-            "day_of_week": v.to_str(raw.get(f["day_of_week"]), max_len=10),
-            "district": v.to_str(raw.get(f["district"]), max_len=5),
-            "street": v.to_str(raw.get(f["street"]), max_len=100),
-            "lat": v.to_float(raw.get(f["lat"])),
-            "lon": v.to_float(raw.get(f["lon"])),
-            "shooting": v.to_bool(raw.get(f["shooting"])),
-            "classification_metadata": json.dumps({
-                "severity": classification.get("severity"),
-                "category": classification.get("category"),
-                "narrative": classification.get("narrative"),
-                "source_fields": {
-                    "offense_description": offense_desc,
-                    "offense_code": v.to_str(raw.get(f["offense_code"])),
-                    "district": v.to_str(raw.get(f["district"])),
-                    "street": v.to_str(raw.get(f["street"])),
-                    "hour": v.to_int(raw.get(f["hour"])),
-                },
-            }),
-            "source_resource_id": self._config["connection"]["resource_id"],
-            "pipeline_run_id": self.pipeline_run_id,
-        }
+            street = v.to_str(raw.get(f["street"]), max_len=100)
+            hour = v.to_int(raw.get(f["hour"]))
+            district = v.to_str(raw.get(f["district"]), max_len=5)
+            day = v.to_str(raw.get(f["day_of_week"]), max_len=10)
+            shooting = v.to_bool(raw.get(f["shooting"]))
 
+            # Per-record narrative: type narrative + specific context
+            type_narrative = classification.get("narrative", offense_desc or "Incident")
+            parts = [type_narrative.rstrip(".")]
+            if street:
+                parts.append(f"on {street}")
+            if hour is not None:
+                parts.append(f"at {hour:02d}:00")
+            if day:
+                parts.append(f"on a {day.strip()}")
+            if district:
+                parts.append(f"in district {district}")
+            if shooting:
+                parts.append("— shooting involved")
+            record_narrative = " ".join(parts) + "."
+
+            return {
+                "incident_id": v.to_str(raw.get(f["incident_id"])),
+                "offense_code": v.to_str(raw.get(f["offense_code"]), max_len=10),
+                "offense_description": v.to_str(offense_desc, max_len=100),
+                "severity": classification.get("severity", "unknown"),
+                "occurred_on_date": v.to_str(raw.get(f["occurred_on_date"])),
+                "hour": hour,
+                "day_of_week": day,
+                "district": district,
+                "street": street,
+                "lat": v.to_float(raw.get(f["lat"])),
+                "lon": v.to_float(raw.get(f["lon"])),
+                "shooting": shooting,
+                "classification_metadata": json.dumps({
+                    "severity": classification.get("severity"),
+                    "category": classification.get("category"),
+                    "narrative": record_narrative,
+                    "type_narrative": classification.get("narrative"),
+                    "source_fields": {
+                        "offense_description": offense_desc,
+                        "offense_code": v.to_str(raw.get(f["offense_code"])),
+                        "district": district,
+                        "street": street,
+                        "hour": hour,
+                    },
+                }),
+                "source_resource_id": self._config["connection"]["resource_id"],
+                "pipeline_run_id": self.pipeline_run_id,
+            }
     # ── Staging + Merge ──────────────────────────────────────
 
     def _create_staging_table(self) -> str:

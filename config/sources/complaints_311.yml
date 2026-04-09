@@ -6,6 +6,22 @@ connection:
   page_size: 1000
   max_pages: 500
 
+fields:
+  case_enquiry_id: "case_enquiry_id"
+  open_dt: "open_dt"
+  closed_dt: "closed_dt"
+  case_status: "case_status"
+  case_title: "case_title"
+  subject: "subject"
+  reason: "reason"
+  type: "type"
+  neighborhood: "neighborhood"
+  ward: "ward"
+  street: "location_street_name"
+  zip_code: "location_zipcode"
+  lat: "latitude"
+  lon: "longitude"
+
 variants:
   2025_legacy:
     resource_id: "9d7c2214-4709-478a-a2e8-fb2020a5bb94"
@@ -31,8 +47,10 @@ variants:
       type: "service_name"
       case_title: "case_topic"
       closed_dt: "close_date"
-      street: "street_name"
-      zip_code: "zip_code"
+      location_street_name: "street_name"
+      location_zipcode: "zip_code"
+      subject: "case_topic"
+      reason: "case_topic"
 
 rate_limit:
   requests_per_second: 5

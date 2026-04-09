@@ -9,24 +9,34 @@ import time
 import json
 import argparse
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
 from typing import Optional
+import sys
 
 import structlog
 import snowflake.connector
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
+from dotenv import load_dotenv
 
 from app.config import get_settings
 
+# Load .env once at import — all pipelines inherit this
+load_dotenv()
+
 
 # ── Structured logging setup ─────────────────────────────────
+
+renderer = (
+    structlog.dev.ConsoleRenderer()
+    if sys.stderr.isatty()
+    else structlog.processors.JSONRenderer()
+)
 
 structlog.configure(
     processors=[
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.JSONRenderer(),
+        renderer,
     ],
     wrapper_class=structlog.make_filtering_bound_logger(0),
     context_class=dict,
@@ -47,7 +57,7 @@ class PipelineRunResult(BaseModel):
     records_skipped: int = 0
     records_failed: int = 0
     duration_ms: int = 0
-    error: Optional[str] = None
+    error_message: Optional[str] = None
 
 
 class ErrorRecord(BaseModel):
@@ -74,7 +84,6 @@ class BasePipeline(ABC):
     - CLI argument parsing with --mode support
     """
 
-    # Subclasses must set these
     SOURCE: str = ""
     DESCRIPTION: str = ""
 
@@ -127,7 +136,6 @@ class BasePipeline(ABC):
 
     def record_error(self, record_key: Optional[str], error_type: str,
                      error_message: str, raw_record: Optional[dict] = None):
-        """Log a failed record for dead-letter storage."""
         err = ErrorRecord(
             pipeline_run_id=self.pipeline_run_id,
             source=self.SOURCE,
@@ -140,35 +148,44 @@ class BasePipeline(ABC):
         self.log.warning("record_error",
                          record_key=record_key,
                          error_type=error_type,
-                         error_message=error_message)
+                         msg=error_message)
 
     def _flush_errors(self):
-        """Write accumulated errors to RAW.PIPELINE_ERRORS."""
-        if not self._errors:
-            return
+            if not self._errors:
+                return
 
-        for err in self._errors:
+            # Aggregate by error type
+            summary = {}
+            for err in self._errors:
+                key = err.error_type
+                if key not in summary:
+                    summary[key] = {"count": 0, "sample_keys": []}
+                summary[key]["count"] += 1
+                if len(summary[key]["sample_keys"]) < 5:
+                    summary[key]["sample_keys"].append(err.record_key)
+
             self.cursor.execute(
                 "INSERT INTO RAW.PIPELINE_ERRORS "
                 "(id, pipeline_run_id, source, record_key, error_type, error_message, raw_record) "
                 "SELECT %s, %s, %s, %s, %s, %s, PARSE_JSON(%s)",
                 (
                     str(uuid.uuid4()),
-                    err.pipeline_run_id,
-                    err.source,
-                    err.record_key,
-                    err.error_type,
-                    err.error_message,
-                    json.dumps(err.raw_record) if err.raw_record else None,
+                    self.pipeline_run_id,
+                    self.SOURCE,
+                    None,
+                    "summary",
+                    f"{len(self._errors)} total errors",
+                    json.dumps(summary),
                 ),
             )
 
-        self.log.info("errors_flushed", count=len(self._errors))
+            self.log.info("errors_flushed",
+                        total=len(self._errors),
+                        breakdown=summary)
 
     # ── High watermark ───────────────────────────────────────
 
     def get_high_watermark(self, table: str, date_column: str) -> Optional[str]:
-        """Get the latest date from a table for incremental extraction."""
         self.cursor.execute(f"SELECT MAX({date_column}) FROM {table}")
         row = self.cursor.fetchone()
         if row and row[0]:
@@ -181,30 +198,29 @@ class BasePipeline(ABC):
 
     @classmethod
     def build_arg_parser(cls) -> argparse.ArgumentParser:
-        """Base CLI arguments. Subclasses extend via add_arguments()."""
         parser = argparse.ArgumentParser(description=cls.DESCRIPTION)
         parser.add_argument(
             "--mode",
             choices=["full", "incremental"],
             default="incremental",
-            help="full: backfill all data. incremental: only new records since last run.",
+            help="full: backfill all data. incremental: only new records.",
         )
         parser.add_argument(
             "--start-date",
             type=str,
             default=None,
-            help="Override start date for extraction (YYYY-MM-DD). Ignores high watermark.",
+            help="Override start date (YYYY-MM-DD). Ignores high watermark.",
         )
         parser.add_argument(
             "--end-date",
             type=str,
             default=None,
-            help="Override end date for extraction (YYYY-MM-DD).",
+            help="Override end date (YYYY-MM-DD).",
         )
         parser.add_argument(
             "--dry-run",
             action="store_true",
-            help="Extract and validate only. Do not write to Snowflake.",
+            help="Extract and validate only. No writes to Snowflake.",
         )
         cls.add_arguments(parser)
         return parser
@@ -218,11 +234,9 @@ class BasePipeline(ABC):
 
     @abstractmethod
     def run_pipeline(self, args: argparse.Namespace) -> PipelineRunResult:
-        """Implement pipeline logic. Connection is already open."""
         ...
 
     def run(self, args: Optional[argparse.Namespace] = None) -> PipelineRunResult:
-        """Entry point. Manages connection lifecycle, timing, error flushing."""
         if args is None:
             parser = self.build_arg_parser()
             args = parser.parse_args()
@@ -253,9 +267,10 @@ class BasePipeline(ABC):
 
         except Exception as e:
             result.status = "failed"
-            result.error = str(e)
+            result.error_message = str(e)
             result.duration_ms = int((time.perf_counter() - start) * 1000)
-            self.log.error("pipeline_failed", error=str(e), **result.model_dump())
+            result.records_failed = len(self._errors)
+            self.log.error("pipeline_failed", **result.model_dump())
             raise
 
         finally:
