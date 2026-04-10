@@ -63,14 +63,12 @@ class Complaints311Pipeline(BasePipeline):
         total_valid = 0
         total_staged = 0
 
-        # Stream pages from all 3 variants
         for page in extractor.extract_pages(since=since,
                                             until=args.end_date,
                                             max_records=args.limit):
 
             total_extracted += len(page.records)
 
-            # Validate coordinates
             valid_records = []
             for raw in page.records:
                 result = validator.validate(
@@ -94,13 +92,11 @@ class Complaints311Pipeline(BasePipeline):
 
             total_valid += len(valid_records)
 
-            # Classify complaint types
             type_values = [
                 r.get(self._fields["type"], "") for r in valid_records
             ]
             classifications = classifier.classify(type_values)
 
-            # Transform and stage
             transformed = [
                 self._transform(raw, classifications, validator)
                 for raw in valid_records
@@ -117,7 +113,6 @@ class Complaints311Pipeline(BasePipeline):
                           valid=len(valid_records),
                           staged=len(transformed))
 
-        # Merge or report
         if args.dry_run:
             self.log.info("dry_run_complete",
                           total_extracted=total_extracted,
@@ -154,8 +149,6 @@ class Complaints311Pipeline(BasePipeline):
             records_failed=total_extracted - total_valid,
         )
 
-    # ── Watermark ────────────────────────────────────────────
-
     def _resolve_watermark(self, args: argparse.Namespace) -> str | None:
         if args.start_date:
             return args.start_date
@@ -166,19 +159,16 @@ class Complaints311Pipeline(BasePipeline):
             date_column="open_dt",
         )
 
-    # ── Transform ────────────────────────────────────────────
-
     def _transform(self, raw: dict, classifications: dict,
                    v: RecordValidator) -> dict | None:
         f = self._fields
         complaint_type = v.to_str(raw.get(f["type"]))
         classification = classifications.get(complaint_type, {})
 
-        street = v.to_str(raw.get(f["street"]), max_len=200)
+        street = v.to_str(raw.get(f["street"]))
         neighborhood = v.to_str(raw.get(f.get("neighborhood", "neighborhood")))
         zip_code = v.to_str(raw.get(f["zip_code"]), max_len=10)
 
-        # Enrich neighborhood from zip if missing
         if not neighborhood and zip_code:
             neighborhood = v.resolve_neighborhood(zip_code)
 
@@ -196,12 +186,12 @@ class Complaints311Pipeline(BasePipeline):
             "open_dt": v.to_str(raw.get(f["open_dt"])),
             "closed_dt": v.to_str(raw.get(f.get("closed_dt", "closed_dt"))),
             "case_status": v.to_str(raw.get(f.get("case_status", "case_status")), max_len=20),
-            "case_title": v.to_str(raw.get(f.get("case_title", "case_title")), max_len=100),
-            "subject": v.to_str(raw.get(f.get("subject", "subject")), max_len=100),
-            "reason": v.to_str(raw.get(f.get("reason", "reason")), max_len=100),
-            "type": v.to_str(complaint_type, max_len=100),
+            "case_title": v.to_str(raw.get(f.get("case_title", "case_title"))),
+            "subject": v.to_str(raw.get(f.get("subject", "subject"))),
+            "reason": v.to_str(raw.get(f.get("reason", "reason"))),
+            "type": v.to_str(complaint_type),
             "category": classification.get("category", "other"),
-            "neighborhood": v.to_str(neighborhood, max_len=100),
+            "neighborhood": v.to_str(neighborhood),
             "ward": v.to_str(raw.get(f.get("ward", "ward")), max_len=10),
             "street": street,
             "zip_code": zip_code,
@@ -224,14 +214,9 @@ class Complaints311Pipeline(BasePipeline):
         }
 
     def _resolve_resource_id(self, raw: dict) -> str:
-        """Identify which resource ID this record came from."""
-        # new_system records have case_id, legacy/2026 have case_enquiry_id
         if "case_id" in raw and "case_enquiry_id" not in raw:
             return self._config["variants"]["new_system"]["resource_id"]
-        # Can't distinguish legacy vs 2026 from the record itself — use first match
         return self._config["variants"]["2025_legacy"]["resource_id"]
-
-    # ── Staging + Merge ──────────────────────────────────────
 
     def _create_staging_table(self) -> str:
         batch_id = self.pipeline_run_id[:8]
@@ -244,14 +229,14 @@ class Complaints311Pipeline(BasePipeline):
                 open_dt                 VARCHAR(50),
                 closed_dt               VARCHAR(50),
                 case_status             VARCHAR(20),
-                case_title              VARCHAR(100),
-                subject                 VARCHAR(100),
-                reason                  VARCHAR(100),
-                type                    VARCHAR(100),
-                category                VARCHAR(30),
+                case_title              VARCHAR(200),
+                subject                 VARCHAR(200),
+                reason                  VARCHAR(200),
+                type                    VARCHAR(200),
+                category                VARCHAR(50),
                 neighborhood            VARCHAR(100),
                 ward                    VARCHAR(10),
-                street                  VARCHAR(200),
+                street                  VARCHAR(500),
                 zip_code                VARCHAR(10),
                 lat                     FLOAT,
                 lon                     FLOAT,

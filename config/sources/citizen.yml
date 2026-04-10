@@ -3,12 +3,19 @@ target_table: "RAW.CITIZEN_INCIDENTS"
 
 connection:
   base_url: "https://citizen.com/api/incident/trending"
+  detail_url: "https://citizen.com/api/incident"
   bbox_buffer: 0.02
   limit: 50
+  timeout: 30
 
 center:
   lat: 42.3534
   lon: -71.1323
+
+rate_limit:
+  delay_between_requests: 0.5
+  backoff_base: 2.0
+  backoff_max: 30.0
 
 schedule: "hourly"
 

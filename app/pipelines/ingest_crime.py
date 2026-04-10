@@ -60,14 +60,11 @@ class CrimePipeline(BasePipeline):
             field_name="offense_description",
         )
 
-        # Create staging table once
         stage_table = self._create_staging_table()
 
         total_extracted = 0
         total_valid = 0
         total_staged = 0
-
-        # ── Process page by page ─────────────────────────────
 
         for page in extractor.extract_pages(since=since,
                                             until=args.end_date,
@@ -75,7 +72,6 @@ class CrimePipeline(BasePipeline):
 
             total_extracted += len(page.records)
 
-            # Validate
             valid_records = []
             for raw in page.records:
                 result = validator.validate(
@@ -99,21 +95,18 @@ class CrimePipeline(BasePipeline):
 
             total_valid += len(valid_records)
 
-            # Classify — collects distinct values, cache handles dedup
             offense_values = [
                 r.get(self._fields["offense_description"], "")
                 for r in valid_records
             ]
             classifications = classifier.classify(offense_values)
 
-            # Transform
             transformed = [
                 self._transform(raw, classifications, validator)
                 for raw in valid_records
             ]
             transformed = [r for r in transformed if r]
 
-            # Stage
             if not args.dry_run and transformed:
                 self._stage_batch(stage_table, transformed)
                 total_staged += len(transformed)
@@ -123,8 +116,6 @@ class CrimePipeline(BasePipeline):
                           extracted=len(page.records),
                           valid=len(valid_records),
                           staged=len(transformed))
-
-        # ── Merge ────────────────────────────────────────────
 
         if args.dry_run:
             self.log.info("dry_run_complete",
@@ -162,8 +153,6 @@ class CrimePipeline(BasePipeline):
             records_failed=total_extracted - total_valid,
         )
 
-    # ── Watermark ────────────────────────────────────────────
-
     def _resolve_watermark(self, args: argparse.Namespace) -> str | None:
         if args.start_date:
             return args.start_date
@@ -174,65 +163,61 @@ class CrimePipeline(BasePipeline):
             date_column="occurred_on_date",
         )
 
-    # ── Transform ────────────────────────────────────────────
-
     def _transform(self, raw: dict, classifications: dict,
-                    v: RecordValidator) -> dict | None:
-            f = self._fields
-            offense_desc = v.to_str(raw.get(f["offense_description"]))
-            classification = classifications.get(offense_desc, {})
+                   v: RecordValidator) -> dict | None:
+        f = self._fields
+        offense_desc = v.to_str(raw.get(f["offense_description"]))
+        classification = classifications.get(offense_desc, {})
 
-            street = v.to_str(raw.get(f["street"]), max_len=100)
-            hour = v.to_int(raw.get(f["hour"]))
-            district = v.to_str(raw.get(f["district"]), max_len=5)
-            day = v.to_str(raw.get(f["day_of_week"]), max_len=10)
-            shooting = v.to_bool(raw.get(f["shooting"]))
+        street = v.to_str(raw.get(f["street"]))
+        hour = v.to_int(raw.get(f["hour"]))
+        district = v.to_str(raw.get(f["district"]), max_len=5)
+        day = v.to_str(raw.get(f["day_of_week"]))
+        shooting = v.to_bool(raw.get(f["shooting"]))
 
-            # Per-record narrative: type narrative + specific context
-            type_narrative = classification.get("narrative", offense_desc or "Incident")
-            parts = [type_narrative.rstrip(".")]
-            if street:
-                parts.append(f"on {street}")
-            if hour is not None:
-                parts.append(f"at {hour:02d}:00")
-            if day:
-                parts.append(f"on a {day.strip()}")
-            if district:
-                parts.append(f"in district {district}")
-            if shooting:
-                parts.append("— shooting involved")
-            record_narrative = " ".join(parts) + "."
+        type_narrative = classification.get("narrative", offense_desc or "Incident")
+        parts = [type_narrative.rstrip(".")]
+        if street:
+            parts.append(f"on {street}")
+        if hour is not None:
+            parts.append(f"at {hour:02d}:00")
+        if day:
+            parts.append(f"on a {day.strip()}")
+        if district:
+            parts.append(f"in district {district}")
+        if shooting:
+            parts.append("— shooting involved")
+        record_narrative = " ".join(parts) + "."
 
-            return {
-                "incident_id": v.to_str(raw.get(f["incident_id"])),
-                "offense_code": v.to_str(raw.get(f["offense_code"]), max_len=10),
-                "offense_description": v.to_str(offense_desc, max_len=100),
-                "severity": classification.get("severity", "unknown"),
-                "occurred_on_date": v.to_str(raw.get(f["occurred_on_date"])),
-                "hour": hour,
-                "day_of_week": day,
-                "district": district,
-                "street": street,
-                "lat": v.to_float(raw.get(f["lat"])),
-                "lon": v.to_float(raw.get(f["lon"])),
-                "shooting": shooting,
-                "classification_metadata": json.dumps({
-                    "severity": classification.get("severity"),
-                    "category": classification.get("category"),
-                    "narrative": record_narrative,
-                    "type_narrative": classification.get("narrative"),
-                    "source_fields": {
-                        "offense_description": offense_desc,
-                        "offense_code": v.to_str(raw.get(f["offense_code"])),
-                        "district": district,
-                        "street": street,
-                        "hour": hour,
-                    },
-                }),
-                "source_resource_id": self._config["connection"]["resource_id"],
-                "pipeline_run_id": self.pipeline_run_id,
-            }
-    # ── Staging + Merge ──────────────────────────────────────
+        return {
+            "incident_id": v.to_str(raw.get(f["incident_id"])),
+            "offense_code": v.to_str(raw.get(f["offense_code"])),
+            "offense_description": v.to_str(offense_desc),
+            "severity": classification.get("severity", "unknown"),
+            "occurred_on_date": v.to_str(raw.get(f["occurred_on_date"])),
+            "hour": hour,
+            "day_of_week": day,
+            "district": district,
+            "street": street,
+            "lat": v.to_float(raw.get(f["lat"])),
+            "lon": v.to_float(raw.get(f["lon"])),
+            "shooting": shooting,
+            "classification_metadata": json.dumps({
+                "severity": classification.get("severity"),
+                "category": classification.get("category"),
+                "narrative": record_narrative,
+                "type_narrative": classification.get("narrative"),
+                "source_fields": {
+                    "offense_description": offense_desc,
+                    "offense_code": v.to_str(raw.get(f["offense_code"])),
+                    "district": district,
+                    "street": street,
+                    "hour": hour,
+                },
+            }),
+            "source_resource_id": self._config["connection"]["resource_id"],
+            "pipeline_run_id": self.pipeline_run_id,
+        }
 
     def _create_staging_table(self) -> str:
         batch_id = self.pipeline_run_id[:8]
@@ -242,13 +227,13 @@ class CrimePipeline(BasePipeline):
             CREATE TEMPORARY TABLE {table} (
                 incident_id             VARCHAR(30),
                 offense_code            VARCHAR(10),
-                offense_description     VARCHAR(100),
+                offense_description     VARCHAR(200),
                 severity                VARCHAR(20),
                 occurred_on_date        VARCHAR(50),
                 hour                    INT,
-                day_of_week             VARCHAR(10),
+                day_of_week             VARCHAR(15),
                 district                VARCHAR(5),
-                street                  VARCHAR(100),
+                street                  VARCHAR(200),
                 lat                     FLOAT,
                 lon                     FLOAT,
                 shooting                BOOLEAN,
