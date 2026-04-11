@@ -1,0 +1,35 @@
+source: "listings"
+target_table: "RAW.LISTINGS"
+
+craigslist:
+  domain: "boston.craigslist.org"
+  search_path: "/search/apa"
+  default_params:
+    max_price: 5000
+    min_bedrooms: 0
+  locations:
+    - name: "Boston"
+      postal: "02108"
+      search_distance: 5
+    - name: "Cambridge"
+      postal: "02139"
+      search_distance: 5
+    - name: "Somerville"
+      postal: "02143"
+      search_distance: 3
+    - name: "Brookline"
+      postal: "02445"
+      search_distance: 3
+  max_listings_per_run: 200
+  delay_between_fetches: 3.0
+  headless: true
+  max_retries: 3
+  backoff_base: 2.0
+  backoff_max: 30.0
+
+dedup:
+  source_id_field: "posting_id"
+  source_name: "craigslist"
+
+classification:
+  enabled: false
