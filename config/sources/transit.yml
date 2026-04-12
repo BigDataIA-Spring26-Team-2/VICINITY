@@ -4,6 +4,17 @@ target_table: "RAW.TRANSIT_STOPS"
 connection:
   base_url: "https://api-v3.mbta.com"
   page_size: 500
+  timeout: 30
+
+route_types:
+  - 0   # Light Rail (Green Line)
+  - 1   # Heavy Rail (Red, Orange, Blue)
+  - 2   # Commuter Rail
+
+freshness_days: 30
+
+rate_limit:
+  delay_between_requests: 0.2
 
 schedule: "monthly"
 

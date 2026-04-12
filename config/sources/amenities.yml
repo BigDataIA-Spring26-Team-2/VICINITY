@@ -3,45 +3,110 @@ target_table: "RAW.AMENITIES"
 
 connection:
   base_url: "https://overpass-api.de/api/interpreter"
-  timeout: 45
+  timeout: 60
 
+# Boston metro bbox from spatial.yml — covers Boston, Cambridge,
+# Somerville, Brookline, Watertown, Medford, Everett, etc.
+bbox:
+  south: 42.2
+  west: -71.3
+  north: 42.5
+  east: -70.9
+
+# Each entry becomes one Overpass QL query.
+# key = OSM tag key (stored as category), value = OSM tag value (stored as subcategory).
+# Queries are batched by key at runtime — all "amenity" values become one regex query.
 queries:
+  # Groceries & essentials
   - key: "shop"
     value: "supermarket"
   - key: "shop"
     value: "convenience"
   - key: "shop"
+    value: "grocery"
+  - key: "shop"
     value: "laundry"
-  - key: "amenity"
-    value: "pharmacy"
-  - key: "leisure"
-    value: "fitness_centre"
+
+  # Food & drink
   - key: "amenity"
     value: "cafe"
   - key: "amenity"
     value: "restaurant"
   - key: "amenity"
+    value: "fast_food"
+  - key: "amenity"
+    value: "bar"
+  - key: "amenity"
+    value: "pub"
+  - key: "amenity"
+    value: "nightclub"
+
+  # Health
+  - key: "amenity"
+    value: "pharmacy"
+  - key: "amenity"
+    value: "hospital"
+  - key: "amenity"
+    value: "clinic"
+  - key: "amenity"
+    value: "doctors"
+  - key: "amenity"
+    value: "dentist"
+
+  # Education & childcare
+  - key: "amenity"
+    value: "school"
+  - key: "amenity"
+    value: "kindergarten"
+  - key: "amenity"
+    value: "childcare"
+  - key: "amenity"
     value: "library"
 
-seed_locations:
-  Allston: [42.3534, -71.1323]
-  Brighton: [42.3464, -71.1627]
-  Fenway: [42.3429, -71.1003]
-  Back Bay: [42.3503, -71.0810]
-  South End: [42.3388, -71.0685]
-  Dorchester: [42.2987, -71.0603]
-  Jamaica Plain: [42.3097, -71.1151]
-  Roxbury: [42.3152, -71.0901]
-  South Boston: [42.3381, -71.0476]
-  East Boston: [42.3702, -71.0389]
-  Charlestown: [42.3782, -71.0602]
-  Cambridge: [42.3736, -71.1209]
-  Somerville: [42.3876, -71.0995]
+  # Services
+  - key: "amenity"
+    value: "bank"
+  - key: "amenity"
+    value: "atm"
+  - key: "amenity"
+    value: "post_office"
+  - key: "amenity"
+    value: "place_of_worship"
+  - key: "amenity"
+    value: "community_centre"
 
-radius_m: 1000
+  # Safety
+  - key: "amenity"
+    value: "police"
+  - key: "amenity"
+    value: "fire_station"
+
+  # Entertainment
+  - key: "amenity"
+    value: "cinema"
+  - key: "amenity"
+    value: "theatre"
+
+  # Fitness & recreation
+  - key: "leisure"
+    value: "fitness_centre"
+  - key: "leisure"
+    value: "park"
+  - key: "leisure"
+    value: "playground"
+  - key: "leisure"
+    value: "dog_park"
+  - key: "leisure"
+    value: "sports_centre"
+  - key: "leisure"
+    value: "swimming_pool"
+  - key: "leisure"
+    value: "garden"
+
+freshness_days: 30
 
 rate_limit:
-  delay_between_queries: 5.0
+  delay_between_queries: 15.0
 
 schedule: "monthly"
 
