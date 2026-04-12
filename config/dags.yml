@@ -1,0 +1,158 @@
+# ── Vicinity DAG Configuration ────────────────────────────────
+#
+# Tuning knobs for every DAG. Changes propagate on next scheduler
+# parse cycle (~30s). DAG files read these values at parse time.
+#
+# Layout:
+#   defaults       — inherited by every DAG unless overridden
+#   notifications  — Slack alerting
+#   dags.<name>    — per-DAG schedule, Airflow knobs, pipeline flags
+#
+# Manual trigger:
+#   Any pipeline_flags value can be overridden at trigger time
+#   via dag_run.conf JSON: {"mode": "full", "limit": 50, "dry_run": true}
+# ──────────────────────────────────────────────────────────────
+
+defaults:
+  owner: "vicinity"
+  retries: 2
+  retry_delay_min: 5
+  max_active_runs: 1
+  dagrun_timeout_min: 120
+  start_date: "2026-04-11"
+  catchup: false
+  tags: ["vicinity", "ingest"]
+
+notifications:
+  slack:
+    enabled: true
+    conn_id: "slack_vicinity"
+    channel: "#vicinity-alerts"
+    notify_on_success: true          # set false to suppress green-circle messages
+    mention_on_failure: "<!channel>"
+    mention_on_retry: ""
+
+# ── Per-DAG Knobs ────────────────────────────────────────────
+#
+# schedule          — cron expression (null = manual-only)
+# retries           — overrides defaults.retries
+# retry_delay_min   — minutes between retries
+# dagrun_timeout_min— kill after N minutes
+# sla_min           — SLA miss alert threshold (null = disabled)
+# tags              — Airflow UI filter tags
+# pipeline_flags    — CLI flag defaults (null = omit from command)
+# ──────────────────────────────────────────────────────────────
+
+dags:
+
+  # ── Safety Sources ───────────────────────────────────────
+
+  ingest_crime:
+    description: "Boston PD crime incidents from CKAN"
+    schedule: "0 6 * * *"
+    retries: 3
+    retry_delay_min: 10
+    dagrun_timeout_min: 90
+    sla_min: 60
+    tags: ["vicinity", "ingest", "safety", "ckan"]
+    pipeline_flags:
+      mode: "incremental"
+      limit: null
+      start_date: null
+      end_date: null
+      dry_run: false
+
+  ingest_311:
+    description: "Boston 311 complaints from CKAN"
+    schedule: "0 6 * * *"
+    retries: 3
+    retry_delay_min: 10
+    dagrun_timeout_min: 120
+    sla_min: 90
+    tags: ["vicinity", "ingest", "livability", "ckan"]
+    pipeline_flags:
+      mode: "incremental"
+      limit: null
+      start_date: null
+      end_date: null
+      dry_run: false
+
+  ingest_citizen:
+    description: "Citizen App real-time incidents"
+    schedule: "0 * * * *"
+    retries: 2
+    retry_delay_min: 3
+    dagrun_timeout_min: 15
+    sla_min: 10
+    tags: ["vicinity", "ingest", "safety", "realtime"]
+    pipeline_flags:
+      mode: "full"
+      limit: null
+      dry_run: false
+
+  # ── Listings Sources ─────────────────────────────────────
+
+  ingest_listings:
+    description: "HomeHarvest MLS listings (primary)"
+    schedule: "0 7 * * 1,4"
+    retries: 2
+    retry_delay_min: 10
+    dagrun_timeout_min: 60
+    sla_min: 45
+    tags: ["vicinity", "ingest", "listings"]
+    pipeline_flags:
+      mode: "incremental"
+      limit: null
+      start_date: null
+      end_date: null
+      dry_run: false
+      location: null
+      past_days: null
+      min_price: null
+      max_price: null
+      skip_deactivation: false
+
+  ingest_listings_craigslist:
+    description: "Craigslist fallback listings"
+    schedule: "0 8 * * 1,4"
+    retries: 2
+    retry_delay_min: 15
+    dagrun_timeout_min: 90
+    sla_min: 60
+    tags: ["vicinity", "ingest", "listings", "scraping"]
+    pipeline_flags:
+      mode: "full"
+      limit: 200
+      dry_run: false
+      min_price: null
+      max_price: null
+      delay: null
+      no_headless: false
+
+  # ── Seed Data Sources ────────────────────────────────────
+
+  ingest_transit:
+    description: "MBTA transit stops and routes"
+    schedule: "0 3 1 * *"
+    retries: 3
+    retry_delay_min: 5
+    dagrun_timeout_min: 30
+    sla_min: 20
+    tags: ["vicinity", "ingest", "transit", "seed"]
+    pipeline_flags:
+      mode: "full"
+      dry_run: false
+      route_types: null
+
+  ingest_amenities:
+    description: "Overpass OSM amenities"
+    schedule: "0 4 1 * *"
+    retries: 3
+    retry_delay_min: 20
+    dagrun_timeout_min: 60
+    sla_min: 45
+    tags: ["vicinity", "ingest", "amenities", "seed"]
+    pipeline_flags:
+      mode: "full"
+      dry_run: false
+      categories: null
