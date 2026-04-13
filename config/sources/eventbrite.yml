@@ -1,0 +1,21 @@
+source: "eventbrite"
+target_table: "RAW.LIFESTYLE_SIGNALS"
+
+connection:
+  base_url: "https://www.eventbrite.com/d"
+  timeout: 30
+
+center:
+  lat: 42.3534
+  lon: -71.1323
+
+location:
+  slug: "ma--boston"
+  max_radius_km: 15
+
+rate_limit:
+  delay_between_requests: 1.0
+  backoff_base: 2.0
+  backoff_max: 30.0
+
+schedule: "daily"

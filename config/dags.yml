@@ -156,3 +156,19 @@ dags:
       mode: "full"
       dry_run: false
       categories: null
+
+  # ── Lifestyle Sources ────────────────────────────────────
+
+  ingest_eventbrite:
+    description: "Eventbrite events as lifestyle signals"
+    schedule: "0 9 * * *"
+    retries: 2
+    retry_delay_min: 10
+    dagrun_timeout_min: 30
+    sla_min: 20
+    tags: ["vicinity", "ingest", "lifestyle", "scraping"]
+    pipeline_flags:
+      preference_tag: null
+      query: null
+      pages: 1
+      dry_run: false
