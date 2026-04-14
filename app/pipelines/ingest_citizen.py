@@ -19,7 +19,7 @@ import httpx
 import structlog
 
 from app.core.base_pipeline import BasePipeline, PipelineRunResult
-from app.core.config_loader import load_source_config, load_pipeline
+from app.core.config_loader import load_source_config
 from app.core.validator import RecordValidator
 from app.core.classifier import ClassificationCache
 
@@ -29,7 +29,7 @@ logger = structlog.get_logger()
 class CitizenExtractor:
     """Fetches Boston Citizen incidents: trending list then per-incident detail."""
 
-    def __init__(self, config: dict, retry_config):
+    def __init__(self, config: dict):
         conn = config["connection"]
         center = config["center"]
 
@@ -52,8 +52,7 @@ class CitizenExtractor:
         self._delay = rate.get("delay_between_requests", 0.5)
         self._backoff_base = rate.get("backoff_base", 2.0)
         self._backoff_max = rate.get("backoff_max", 30.0)
-        self._max_attempts = retry_config.max_attempts
-
+        self._max_attempts = rate.get("max_attempts", 3)
         self._headers = {"User-Agent": "Vicinity/1.0"}
         self._log = logger.bind(extractor="citizen")
 
@@ -135,7 +134,6 @@ class CitizenPipeline(BasePipeline):
     def __init__(self):
         super().__init__()
         self._config = load_source_config("citizen")
-        self._pipeline_config = load_pipeline()
 
     @classmethod
     def add_arguments(cls, parser: argparse.ArgumentParser):
@@ -149,8 +147,7 @@ class CitizenPipeline(BasePipeline):
     def run_pipeline(self, args: argparse.Namespace) -> PipelineRunResult:
 
         validator = RecordValidator()
-        extractor = CitizenExtractor(self._config, self._pipeline_config["retry"])
-
+        extractor = CitizenExtractor(self._config)
         classifier = None
         classification_cfg = self._config.get("classification", {})
         if classification_cfg.get("enabled", True):

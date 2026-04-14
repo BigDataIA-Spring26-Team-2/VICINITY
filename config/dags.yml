@@ -199,3 +199,18 @@ dags:
       preference_tag: null
       query: null
       dry_run: false
+
+  sync_pinecone:
+    description: "Embed lifestyle signals and sync to Pinecone"
+    schedule: "30 11 * * 0"
+    retries: 2
+    retry_delay_min: 10
+    dagrun_timeout_min: 60
+    sla_min: 45
+    tags: ["vicinity", "embedding", "pinecone"]
+    pipeline_flags:
+      preference_tag: null
+      batch_size: null
+      force_reembed: false
+      gc: false
+      dry_run: false

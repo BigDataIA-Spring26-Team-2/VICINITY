@@ -43,6 +43,7 @@ class OverpassExtractor:
         self._bbox = config["bbox"]
         self._queries = config["queries"]
         self._delay = config.get("rate_limit", {}).get("delay_between_queries", 6.0)
+        self._max_attempts = config.get("rate_limit", {}).get("max_attempts", 5)
         self._log = logger.bind(extractor="overpass")
 
     def extract(self, categories: list[str] | None = None) -> list[dict]:
@@ -119,7 +120,7 @@ class OverpassExtractor:
     def _run_query(self, query: str) -> list[dict] | None:
         """POST a single Overpass QL query with retry. 5 attempts gives
         ~60s total backoff to outlast rate-limit windows."""
-        for attempt in range(1, 6):
+        for attempt in range(1, self._max_attempts + 1):
             try:
                 with httpx.Client(timeout=self._timeout + 10) as client:
                     resp = client.post(

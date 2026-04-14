@@ -19,7 +19,7 @@ import argparse
 import structlog
 
 from app.core.base_pipeline import BasePipeline, PipelineRunResult
-from app.core.config_loader import load_source_config, load_pipeline
+from app.core.config_loader import load_source_config
 from app.core.validator import RecordValidator
 
 logger = structlog.get_logger()
@@ -69,7 +69,7 @@ class EventbriteExtractor:
 
     _SERVER_DATA_MARKER = "window.__SERVER_DATA__ = "
 
-    def __init__(self, config: dict, retry_config):
+    def __init__(self, config: dict):
         conn = config["connection"]
         location = config["location"]
 
@@ -80,7 +80,7 @@ class EventbriteExtractor:
         self._delay = rate.get("delay_between_requests", 1.0)
         self._backoff_base = rate.get("backoff_base", 2.0)
         self._backoff_max = rate.get("backoff_max", 30.0)
-        self._max_attempts = retry_config.max_attempts
+        self._max_attempts = rate.get("max_attempts", 3)
         self._headless = True
 
         self._log = logger.bind(extractor="eventbrite")
@@ -185,7 +185,6 @@ class EventbritePipeline(BasePipeline):
     def __init__(self):
         super().__init__()
         self._config = load_source_config("eventbrite")
-        self._pipeline_config = load_pipeline()
         self._center_lat = self._config["center"]["lat"]
         self._center_lon = self._config["center"]["lon"]
         self._max_radius_km = self._config["location"]["max_radius_km"]

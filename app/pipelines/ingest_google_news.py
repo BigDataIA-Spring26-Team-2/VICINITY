@@ -36,7 +36,7 @@ from urllib.parse import quote_plus
 import structlog
 
 from app.core.base_pipeline import BasePipeline, PipelineRunResult
-from app.core.config_loader import load_source_config, load_pipeline, load_classification
+from app.core.config_loader import load_source_config, load_classification
 from app.core.classifier import ProviderChain, CostTracker
 
 logger = structlog.get_logger()
@@ -55,12 +55,12 @@ except ImportError:
 class NewsTransport:
     """StealthyFetcher wrapper with backoff retry and delay pacing."""
 
-    def __init__(self, config: dict, retry_config):
+    def __init__(self, config: dict):
         rate = config.get("rate_limit", {})
         self.delay = rate.get("delay_between_requests", 3.0)
         self._backoff_base = rate.get("backoff_base", 2.0)
         self._backoff_max = rate.get("backoff_max", 30.0)
-        self._max_attempts = retry_config.max_attempts
+        self._max_attempts = rate.get("max_attempts", 3)
         self._log = logger.bind(component="news_transport")
 
     def fetch_html(self, url: str) -> str | None:
@@ -527,7 +527,6 @@ class GoogleNewsPipeline(BasePipeline):
     def __init__(self):
         super().__init__()
         self._config = load_source_config("google_news")
-        self._pipeline_config = load_pipeline()
 
     @classmethod
     def add_arguments(cls, parser: argparse.ArgumentParser):
@@ -543,7 +542,6 @@ class GoogleNewsPipeline(BasePipeline):
     def run_pipeline(self, args: argparse.Namespace) -> PipelineRunResult:
         tag = args.preference_tag
         cfg = self._config
-        retry = self._pipeline_config["retry"]
 
         # Resolve queries for this tag
         if args.query:
@@ -557,7 +555,7 @@ class GoogleNewsPipeline(BasePipeline):
         s1_thresh = relevance_cfg.get("stage1_threshold", 30)
         s2_thresh = relevance_cfg.get("stage2_threshold", 40)
 
-        transport = NewsTransport(cfg, retry)
+        transport = NewsTransport(cfg)
         extractor = NewsExtractor(cfg, transport)
         classifier = NewsClassifier(self.cursor, self.pipeline_run_id)
 
@@ -801,6 +799,14 @@ class GoogleNewsPipeline(BasePipeline):
         return table
 
     def _stage_batch(self, stage_table: str, records: list[dict]):
+        def _safe(v):
+            """Coerce non-primitive values to str for Snowflake param binding.
+            Uses exact type check — str subclasses like Scrapling's
+            TextHandler must be converted to plain str."""
+            if v is None or type(v) in (str, int, float, bool):
+                return v
+            return str(v)
+
         sql = f"""
             INSERT INTO {stage_table} (
                 signal_id, signal_source, source_native_id, preference_tag,
@@ -811,13 +817,13 @@ class GoogleNewsPipeline(BasePipeline):
                       %s, %s, %s, %s, %s, %s)
         """
         rows = [
-            (
+            tuple(_safe(v) for v in (
                 r["signal_id"], r["signal_source"], r["source_native_id"],
                 r["preference_tag"], r["title"], r["snippet_text"],
                 r["raw_thread_text"], r["url"], r["content_hash"],
                 r["sentiment"], r["relevance_score"], r["lat"], r["lon"],
                 r["classification_metadata"], r["pipeline_run_id"],
-            )
+            ))
             for r in records
         ]
         self.cursor.executemany(sql, rows)

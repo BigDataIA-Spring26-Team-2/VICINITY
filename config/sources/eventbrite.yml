@@ -17,5 +17,6 @@ rate_limit:
   delay_between_requests: 1.0
   backoff_base: 2.0
   backoff_max: 30.0
+  max_attempts: 3
 
 schedule: "daily"

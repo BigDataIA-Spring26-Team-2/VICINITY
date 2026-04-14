@@ -29,22 +29,6 @@ class BBox:
 
 
 @dataclass(frozen=True)
-class RateLimitConfig:
-    requests_per_second: float = 5.0
-    backoff_base: float = 2.0
-    backoff_max: float = 30.0
-    delay_between_queries: float = 0.0
-    delay_between_requests: float = 0.0
-
-
-@dataclass(frozen=True)
-class RetryConfig:
-    max_attempts: int = 3
-    backoff_base: float = 2.0
-    backoff_max: float = 30.0
-
-
-@dataclass(frozen=True)
 class LLMConfig:
     model: str = "deepseek-chat"
     temperature: float = 0.0
@@ -76,14 +60,6 @@ def load_spatial() -> dict:
 
 def load_classification() -> dict:
     return _load(CONFIG_DIR / "classification.yml")
-
-
-def load_pipeline() -> dict:
-    raw = _load(CONFIG_DIR / "pipeline.yml")
-    return {
-        "retry": RetryConfig(**raw["retry"]),
-        "scheduling": raw["scheduling"],
-    }
 
 
 def load_llm_config() -> LLMConfig:

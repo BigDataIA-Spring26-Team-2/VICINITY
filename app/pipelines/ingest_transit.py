@@ -52,6 +52,7 @@ class MBTAExtractor:
         self._timeout = conn.get("timeout", 30)
         self._route_types = config["route_types"]
         self._delay = config.get("rate_limit", {}).get("delay_between_requests", 0.2)
+        self._max_attempts = config.get("rate_limit", {}).get("max_attempts", 5)
         self._log = logger.bind(extractor="mbta")
 
     def extract(self) -> list[dict]:
@@ -172,7 +173,7 @@ class MBTAExtractor:
         (2+4+8+16+30), enough to outlast most rate-limit windows."""
         url = f"{self._base_url}{path}"
 
-        for attempt in range(1, 6):
+        for attempt in range(1, self._max_attempts + 1):
             try:
                 with httpx.Client(timeout=self._timeout) as client:
                     resp = client.get(url, params=params)

@@ -15,6 +15,7 @@ freshness_days: 30
 
 rate_limit:
   delay_between_requests: 0.2
+  max_attempts: 3
 
 schedule: "monthly"
 

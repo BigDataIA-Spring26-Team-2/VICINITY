@@ -78,6 +78,7 @@ rate_limit:
   delay_between_requests: 3.0
   backoff_base: 2.0
   backoff_max: 30.0
+  max_attempts: 3
 
 # ── Sources to skip (extraction always fails) ───────────────
 blocked_sources:

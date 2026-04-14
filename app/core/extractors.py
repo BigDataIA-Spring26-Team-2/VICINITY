@@ -56,6 +56,7 @@ class CKANExtractor:
         rps = rate.get("requests_per_second", 5.0)
         self._backoff_base = rate.get("backoff_base", 2.0)
         self._backoff_max = rate.get("backoff_max", 30.0)
+        self._max_attempts = rate.get("max_attempts", 3)
         self._min_interval = 1.0 / rps if rps > 0 else 0.2
 
         self._log = logger.bind(extractor="ckan", source=source_name)
@@ -147,7 +148,7 @@ class CKANExtractor:
 
     def _fetch_page(self, params: dict) -> Optional[dict]:
         """Single page fetch with retry."""
-        for attempt in range(1, 4):
+        for attempt in range(1, self._max_attempts + 1):
             try:
                 with httpx.Client(timeout=30.0) as client:
                     resp = client.get(self._base_url, params=params)

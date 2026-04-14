@@ -198,3 +198,9 @@ prompts:
       - Do NOT invent information. Only summarise what the article says.
 
       Return ONLY a valid JSON object. No markdown fences. No explanation.
+
+embedding:
+  model: "text-embedding-3-small"
+  dimensions: 1536
+  batch_size: 50
+  max_input_chars: 8000

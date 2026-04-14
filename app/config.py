@@ -13,10 +13,13 @@ class Settings(BaseSettings):
     snowflake_warehouse: str
     snowflake_role: str
 
-    # LLM
+    # LLM and VECTORDB
     deepseek_api_key: SecretStr = SecretStr("")
     openai_api_key: SecretStr = SecretStr("")
-
+    pinecone_index: str
+    pinecone_cloud: str = "aws"
+    pinecone_region: str = "us-east-1"
+    pinecone_api_key: SecretStr = SecretStr("")
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

@@ -1,0 +1,33 @@
+# ── Time windows ─────────────────────────────────────────────
+crime_window_days: 30
+complaint_window_days: 30
+citizen_window_hours: 48
+
+# ── Route corridor ───────────────────────────────────────────
+corridor_buffer_m: 300
+
+# ── Lifestyle retrieval ──────────────────────────────────────
+lifestyle_top_k: 10
+lifestyle_min_relevance: 50
+
+# ── Essentials ───────────────────────────────────────────────
+essentials:
+  - supermarket
+  - pharmacy
+  - laundry
+  - gym
+  - cafe
+  - library
+
+# ── Composite weights (defaults) ─────────────────────────────
+composite_defaults:
+  safety: 0.30
+  livability: 0.20
+  transit: 0.15
+  amenity: 0.15
+  lifestyle: 0.20
+
+# ── Metadata flags ───────────────────────────────────────────
+store_monthly_series: true
+store_hourly_distribution: true
+store_dow_distribution: true

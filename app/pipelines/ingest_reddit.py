@@ -36,7 +36,7 @@ import httpx
 import structlog
 
 from app.core.base_pipeline import BasePipeline, PipelineRunResult
-from app.core.config_loader import load_source_config, load_pipeline, load_classification
+from app.core.config_loader import load_source_config, load_classification
 from app.core.classifier import ProviderChain, CostTracker
 
 logger = structlog.get_logger()
@@ -70,7 +70,7 @@ class RedditTransport:
       T3  switch to StealthyFetcher after 3 consecutive 429s
     """
 
-    def __init__(self, config: dict, retry_config):
+    def __init__(self, config: dict):
         conn = config.get("connection", {})
         self._timeout = conn.get("timeout", 15)
         self._headers = {"User-Agent": conn.get(
@@ -82,8 +82,7 @@ class RedditTransport:
         self.delay = rate.get("delay_between_requests", 2.0)
         self._backoff_base = rate.get("backoff_base", 2.0)
         self._backoff_max = rate.get("backoff_max", 60.0)
-        self._max_attempts = retry_config.max_attempts
-
+        self._max_attempts = rate.get("max_attempts", 3)
         self._budget = config.get("max_requests_per_run", 60)
         self._request_count = 0
         self._consecutive_429s = 0
@@ -611,7 +610,6 @@ class RedditPipeline(BasePipeline):
     def __init__(self):
         super().__init__()
         self._config = load_source_config("reddit")
-        self._pipeline_config = load_pipeline()
 
     @classmethod
     def add_arguments(cls, parser: argparse.ArgumentParser):
@@ -631,8 +629,6 @@ class RedditPipeline(BasePipeline):
     def run_pipeline(self, args: argparse.Namespace) -> PipelineRunResult:
         tag = args.preference_tag
         cfg = self._config
-        retry = self._pipeline_config["retry"]
-
         # ── Resolve queries ──────────────────────────────────
         if args.query:
             queries = [args.query]
@@ -645,7 +641,7 @@ class RedditPipeline(BasePipeline):
         s1_thresh = relevance_cfg.get("stage1_threshold", 30)
         s2_thresh = relevance_cfg.get("stage2_threshold", 40)
 
-        transport = RedditTransport(cfg, retry)
+        transport = RedditTransport(cfg)
         extractor = RedditExtractor(cfg, transport)
         classifier = RedditClassifier(self.cursor, self.pipeline_run_id)
 
