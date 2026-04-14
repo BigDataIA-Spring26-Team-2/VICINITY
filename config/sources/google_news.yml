@@ -1,0 +1,84 @@
+source: "google_news"
+target_table: "RAW.LIFESTYLE_SIGNALS"
+
+# ── Connection ───────────────────────────────────────────────
+connection:
+  rss_base: "https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
+  timeout: 30
+
+# ── Location context ─────────────────────────────────────────
+location_keyword: "boston"
+
+# ── Queries ──────────────────────────────────────────────────
+# Tag → list of search strings. Organizer Agent may write here.
+# Pipeline reads ALL queries for the given --preference-tag.
+queries:
+  # — Livability ——————————————————————————————————————————
+  safety:
+    - "boston crime"
+    - "boston violent crime"
+    - "boston neighborhood safety"
+  noise:
+    - "boston construction noise"
+    - "boston noise complaints"
+  transit:
+    - "boston MBTA delays"
+    - "boston transit service"
+  rent:
+    - "boston rent prices"
+    - "boston housing"
+
+  # — Lifestyle ——————————————————————————————————————————
+  # Organizer Agent appends per-user tags during onboarding.
+  live_music:
+    - "boston live music"
+    - "boston concert"
+  korean_food:
+    - "boston korean restaurant"
+    - "boston korean food"
+  yoga:
+    - "boston yoga studio"
+  dining:
+    - "boston restaurant opening"
+
+# Tags in this set scope queries as livability signals.
+# All other tags are treated as lifestyle signals.
+livability_tags:
+  - "safety"
+  - "noise"
+  - "transit"
+  - "rent"
+
+# ── Extraction tuning ───────────────────────────────────────
+extraction:
+  max_articles_per_query: 10
+  # CSS selectors tried in order for article body extraction.
+  # First match with >200 chars of <p> text wins.
+  article_selectors:
+    - "article"
+    - "[role='main']"
+    - ".article-body"
+    - ".story-body"
+    - ".entry-content"
+    - ".post-content"
+    - ".article-content"
+    - "main"
+  # Minimum <p> text length (chars) to count as a paragraph.
+  min_paragraph_chars: 30
+  # Minimum total extracted text (chars) to accept an article.
+  min_article_chars: 200
+
+# ── LLM relevance gates ─────────────────────────────────────
+relevance:
+  stage1_threshold: 30
+  stage2_threshold: 40
+
+# ── Rate limiting ────────────────────────────────────────────
+rate_limit:
+  delay_between_requests: 3.0
+  backoff_base: 2.0
+  backoff_max: 30.0
+
+# ── Sources to skip (extraction always fails) ───────────────
+blocked_sources:
+  - "MSN"

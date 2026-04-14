@@ -1,18 +1,109 @@
 source: "reddit"
 target_table: "RAW.LIFESTYLE_SIGNALS"
 
-subreddits:
+# ── Connection ───────────────────────────────────────────────
+connection:
+  base_url: "https://old.reddit.com"
+  timeout: 15
+  user_agent: "Vicinity/1.0 (educational research; contact: team@vicinity.app)"
+
+# ── Subreddits ───────────────────────────────────────────────
+# Livability searches use restrict_sr within these subreddits.
+# Organizer Agent: append neighbourhood subs as discovered.
+livability_subreddits:
   - "boston"
   - "bostonhousing"
+  - "Allston"
+  - "brookline"
+  - "CambridgeMA"
+  - "Somerville"
+  - "NEU"
+  - "BostonU"
 
-user_agent: "Vicinity/1.0 (educational)"
+# Appended to lifestyle queries for global Reddit search.
+location_keyword: "boston"
 
+# ── Queries ──────────────────────────────────────────────────
+# Tag → list of search strings. Organizer Agent may write here.
+# Pipeline reads ALL queries for the given --preference-tag.
+queries:
+  # — Livability (searched within livability_subreddits) ——
+  safety:
+    - "safe at night"
+    - "crime"
+    - "sketchy area"
+  noise:
+    - "noisy neighbors"
+    - "noise complaints"
+    - "loud music"
+  parking:
+    - "street parking"
+    - "parking permit"
+  landlord:
+    - "landlord problems"
+    - "management company"
+    - "lease issues"
+  transit:
+    - "MBTA commute"
+    - "bus reliability"
+    - "subway"
+  rent:
+    - "rent prices"
+    - "rent increase"
+    - "affordable apartments"
+
+  # — Lifestyle (global search + location_keyword) ————
+  # Organizer Agent adds per-user tags during onboarding.
+  live_music:
+    - "live music venues"
+    - "jazz bars"
+    - "concert scene"
+  yoga:
+    - "yoga studios"
+    - "yoga classes"
+  korean_food:
+    - "korean restaurants"
+    - "korean food"
+
+# Tags in this set use livability_subreddits with restrict_sr.
+# All other tags use global search with location_keyword.
+livability_tags:
+  - "safety"
+  - "noise"
+  - "parking"
+  - "landlord"
+  - "transit"
+  - "rent"
+
+# ── Search tuning ────────────────────────────────────────────
+search:
+  sort: "relevance"
+  time_filter: "year"
+  posts_per_query: 10
+  min_score: 2
+  min_comments: 1
+
+# ── Comment fetching ─────────────────────────────────────────
+comments:
+  limit: 200
+  sort: "top"
+  min_score: 1
+  max_depth: null        # null = all depths
+
+# ── LLM relevance gates ─────────────────────────────────────
+relevance:
+  stage1_threshold: 30   # min score to fetch full thread
+  stage2_threshold: 40   # min score to load into Snowflake
+
+# ── Rate limiting & request budget ───────────────────────────
 rate_limit:
   delay_between_requests: 2.0
+  backoff_base: 2.0
+  backoff_max: 60.0
+max_requests_per_run: 500
 
 schedule: "weekly"
 
 classification:
   enabled: true
-  type: "per_record"
   prompt_key: "reddit"
