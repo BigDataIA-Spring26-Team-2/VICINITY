@@ -1,10 +1,23 @@
+# config/scoring.yml
+
+# ── Radii (meters) ───────────────────────────────────────────
+safety_radius_m: 1600
+livability_radius_m: 1600
+essentials_radius_m: 800
+transit_radius_m: 800
+corridor_buffer_m: 300
+
 # ── Time windows ─────────────────────────────────────────────
 crime_window_days: 30
 complaint_window_days: 30
 citizen_window_hours: 48
 
-# ── Route corridor ───────────────────────────────────────────
-corridor_buffer_m: 300
+# ── Complaint scoring weights ────────────────────────────────
+# Quality-of-life complaints (noise, pest, heat, housing) at full weight.
+# Infrastructure complaints (road, sanitation) at reduced weight.
+# Tunable: set infra to 0.0 to ignore, 1.0 to treat equally.
+complaint_qol_weight: 1.0
+complaint_infra_weight: 0.3
 
 # ── Lifestyle retrieval ──────────────────────────────────────
 lifestyle_top_k: 10
@@ -15,16 +28,15 @@ essentials:
   - supermarket
   - pharmacy
   - laundry
-  - gym
+  - fitness_centre
   - cafe
   - library
 
 # ── Composite weights (defaults) ─────────────────────────────
 composite_defaults:
-  safety: 0.30
-  livability: 0.20
+  safety: 0.35
+  livability: 0.30
   transit: 0.15
-  amenity: 0.15
   lifestyle: 0.20
 
 # ── Metadata flags ───────────────────────────────────────────

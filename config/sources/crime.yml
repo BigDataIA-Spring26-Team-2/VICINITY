@@ -4,7 +4,7 @@ target_table: "RAW.CRIME_INCIDENTS"
 connection:
   base_url: "https://data.boston.gov/api/3/action/datastore_search"
   resource_id: "b973d8cb-eeb2-4e7e-99da-c92938efc9c0"
-  page_size: 1000
+  page_size: 10000
   max_pages: 500
 
 keys:

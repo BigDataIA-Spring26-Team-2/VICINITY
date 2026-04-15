@@ -74,3 +74,6 @@ def load_cost_config(model: str) -> CostConfig:
         input_per_million=costs.get("input", 0.14),
         output_per_million=costs.get("output", 0.28),
     )
+
+def load_scoring() -> dict:
+    return _load(CONFIG_DIR / "scoring.yml")

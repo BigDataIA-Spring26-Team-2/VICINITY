@@ -4,6 +4,9 @@ Extracts from 3 CKAN resource IDs (legacy, 2026, new system),
 normalizes field names, classifies complaint types via LLM cache,
 loads to RAW.COMPLAINTS_311 via staging + MERGE.
 
+Records without coordinates are accepted if they have neighborhood
+or zip_code — matched at scoring time via area-level join.
+
 Usage:
     python -m app.pipelines.ingest_311 --mode full --limit 100 --dry-run
     python -m app.pipelines.ingest_311 --mode full
@@ -71,21 +74,55 @@ class Complaints311Pipeline(BasePipeline):
 
             valid_records = []
             for raw in page.records:
-                result = validator.validate(
-                    record=raw,
-                    lat_field=self._fields["lat"],
-                    lon_field=self._fields["lon"],
-                    required=[self._fields["case_enquiry_id"]],
-                )
-                if result.valid:
-                    valid_records.append(raw)
-                else:
+                # case_enquiry_id required — cast to str (2026 variant returns int)
+                case_id = str(raw.get(self._fields["case_enquiry_id"]) or "").strip()
+                if not case_id:
                     self.record_error(
-                        record_key=raw.get(self._fields["case_enquiry_id"]),
+                        record_key=None,
                         error_type="validation",
-                        error_message="; ".join(result.errors),
-                        raw_record=raw,
+                        error_message="missing_case_enquiry_id",
                     )
+                    continue
+
+                # Coordinates optional — records without lat/lon are matched
+                # by neighborhood/zip at scoring time.
+                lat = raw.get(self._fields["lat"])
+                lon = raw.get(self._fields["lon"])
+                has_coords = (
+                    lat is not None and lon is not None
+                    and str(lat).strip() not in ("", "0", "0.0", "None")
+                    and str(lon).strip() not in ("", "0", "0.0", "None")
+                )
+
+                if has_coords:
+                    result = validator.validate(
+                        record=raw,
+                        lat_field=self._fields["lat"],
+                        lon_field=self._fields["lon"],
+                    )
+                    if not result.valid:
+                        # Coordinates present but invalid (outside bbox) —
+                        # still accept, just null out the coords
+                        raw[self._fields["lat"]] = None
+                        raw[self._fields["lon"]] = None
+                        has_coords = False
+
+                # Accept if has coordinates OR neighborhood OR zip
+                has_location = (
+                    has_coords
+                    or raw.get(self._fields.get("neighborhood", "neighborhood"))
+                    or raw.get(self._fields["zip_code"])
+                )
+
+                if not has_location:
+                    self.record_error(
+                        record_key=case_id,
+                        error_type="validation",
+                        error_message="no_location_data",
+                    )
+                    continue
+
+                valid_records.append(raw)
 
             if not valid_records:
                 continue

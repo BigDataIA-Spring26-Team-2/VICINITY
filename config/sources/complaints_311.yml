@@ -3,7 +3,7 @@ target_table: "RAW.COMPLAINTS_311"
 
 connection:
   base_url: "https://data.boston.gov/api/3/action/datastore_search"
-  page_size: 1000
+  page_size: 10000
   max_pages: 500
 
 fields:
