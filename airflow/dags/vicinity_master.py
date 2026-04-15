@@ -145,6 +145,7 @@ def _build_task(name: str, cfg: dict) -> BashOperator:
         pool=cfg.get("pool", "default_pool"),
         trigger_rule=TriggerRule.ALL_DONE,
         sla=timedelta(minutes=cfg["sla_min"]) if cfg.get("sla_min") else None,
+        on_failure_callback=on_failure,
     )
 
 
@@ -501,6 +502,7 @@ with DAG(
             task_id="check_new_signals",
             python_callable=_check_new_signals,
             trigger_rule=TriggerRule.ALL_SUCCESS,
+            on_failure_callback=on_failure,
         )
         prev_anchor >> signal_check
         prev_anchor = signal_check
