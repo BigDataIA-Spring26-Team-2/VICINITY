@@ -294,10 +294,10 @@ class ScoringPipeline(BasePipeline):
             ON tgt.listing_id = src.listing_id
                AND tgt.score_date = src.score_date
             WHEN MATCHED THEN UPDATE SET
-                crime_count_500m_7d     = src.crime_count,
-                violent_count_500m_7d   = src.violent_count,
+                crime_count             = src.crime_count,
+                violent_count           = src.violent_count,
                 crime_trend             = src.crime_trend,
-                complaint_count_500m_7d = src.complaint_count,
+                complaint_count         = src.complaint_count,
                 citizen_incidents_48h   = src.citizen_incidents,
                 citizen_nighttime_48h   = src.citizen_nighttime,
                 nearby_transit_stops    = src.transit_stops,
@@ -310,8 +310,8 @@ class ScoringPipeline(BasePipeline):
                 pipeline_run_id         = src.pipeline_run_id
             WHEN NOT MATCHED THEN INSERT (
                 listing_id, score_date,
-                crime_count_500m_7d, violent_count_500m_7d, crime_trend,
-                complaint_count_500m_7d, citizen_incidents_48h,
+                crime_count, violent_count, crime_trend,
+                complaint_count, citizen_incidents_48h,
                 citizen_nighttime_48h, nearby_transit_stops,
                 nearby_amenity_count, listing_active, current_price,
                 safety_score, livability_score,

@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     pinecone_api_key: SecretStr = SecretStr("")
     model_config = {"env_file": ".env", "extra": "ignore"}
 
+    # S3 backup (leave S3_BUCKET empty to disable)
+    s3_bucket: str = ""
+    aws_region: str = "us-east-1"
+
 
 @lru_cache
 def get_settings() -> Settings:

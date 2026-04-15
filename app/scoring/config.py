@@ -98,3 +98,4 @@ def load_scoring_config() -> ScoringConfig:
         store_hourly_distribution=raw.get("store_hourly_distribution", True),
         store_dow_distribution=raw.get("store_dow_distribution", True),
     )
+

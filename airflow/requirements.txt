@@ -30,6 +30,7 @@ structlog==25.5.0
 
 # LLM (classifier)
 openai==2.30.0
+pinecone==8.1.2
 
 # Listings
 homeharvest==0.8.18
@@ -39,3 +40,5 @@ scrapling[fetchers]==0.4.5
 apache-airflow-providers-slack
 apache-airflow-providers-celery
 redis==5.0.0
+
+boto3==1.42.85

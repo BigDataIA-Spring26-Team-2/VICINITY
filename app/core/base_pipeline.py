@@ -1,7 +1,7 @@
 """Base pipeline — shared infrastructure for all Vicinity pipelines.
 
 Handles: run tracking, structured logging, Snowflake connection,
-timing, error recording, and graceful shutdown.
+timing, error recording, S3 archival, and graceful shutdown.
 """
 
 import uuid
@@ -80,6 +80,7 @@ class BasePipeline(ABC):
     - Snowflake connection lifecycle
     - structlog bound to run context
     - error recording to RAW.PIPELINE_ERRORS
+    - S3 archival of loaded records (best-effort)
     - timing and result tracking
     - CLI argument parsing with --mode support
     """
@@ -183,6 +184,32 @@ class BasePipeline(ABC):
                         total=len(self._errors),
                         breakdown=summary)
 
+    # ── S3 archival ──────────────────────────────────────────
+
+    def _archive_to_s3(self, result: "PipelineRunResult"):
+        """Archive this run's loaded records to S3. Best-effort.
+
+        Resolves target_table from pipeline config or class attribute.
+        Skips silently if S3 is not configured or table is unknown.
+        """
+        target_table = None
+        if hasattr(self, "_config") and isinstance(self._config, dict):
+            target_table = self._config.get("target_table")
+        if not target_table:
+            target_table = getattr(self, "TARGET_TABLE", None)
+        if not target_table:
+            return
+
+        from app.core.s3_archive import S3Archiver
+        archiver = S3Archiver()
+        if archiver.enabled:
+            archiver.archive_run(
+                self.cursor,
+                self.SOURCE,
+                self.pipeline_run_id,
+                target_table,
+            )
+
     # ── High watermark ───────────────────────────────────────
 
     def get_high_watermark(self, table: str, date_column: str) -> Optional[str]:
@@ -260,6 +287,9 @@ class BasePipeline(ABC):
 
             if not args.dry_run:
                 self._flush_errors()
+
+                if result.records_loaded > 0:
+                    self._archive_to_s3(result)
 
             result.duration_ms = int((time.perf_counter() - start) * 1000)
             result.records_failed = len(self._errors)
