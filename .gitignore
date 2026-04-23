@@ -6,6 +6,7 @@ __pycache__/
 # C extensions
 *.so
 
+deploy.env
 # Distribution / packaging
 .vscode
 .Python
@@ -219,3 +220,10 @@ override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local

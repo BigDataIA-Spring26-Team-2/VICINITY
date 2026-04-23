@@ -1,0 +1,47 @@
+# ══════════════════════════════════════════════════════════════
+# VICINITY — Frontend Image (React + nginx)
+#
+# Multi-stage:
+#   1. Node 20 builds the Vite app
+#   2. nginx serves static files + proxies API routes
+#
+# Build context: project root
+#   docker build -f docker/Dockerfile.frontend -t vicinity-frontend:latest .
+#
+# Google Maps key is read from frontend/.env at build time.
+# VITE_API_URL is empty — nginx proxies API calls.
+# ══════════════════════════════════════════════════════════════
+
+# ── Stage 1: Build ────────────────────────────────────────────
+FROM node:20-alpine AS build
+
+WORKDIR /app
+
+# Vite reads VITE_GOOGLE_MAPS_KEY from frontend/.env at build time.
+# VITE_API_URL must be empty — nginx proxies API calls.
+ENV VITE_API_URL=""
+
+# Install deps (cached unless package.json changes)
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci --ignore-scripts 2>/dev/null || npm install
+
+# Copy source and build
+COPY frontend/ ./
+RUN npm run build
+
+# ── Stage 2: Serve ────────────────────────────────────────────
+FROM nginx:1.27-alpine
+
+# Remove default config
+RUN rm /etc/nginx/conf.d/default.conf
+
+# Copy our nginx config and built assets
+COPY docker/nginx.conf /etc/nginx/conf.d/vicinity.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -qO- http://localhost/ || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

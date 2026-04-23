@@ -1,0 +1,128 @@
+# ══════════════════════════════════════════════════════════════
+# VICINITY — API Runtime Dependencies
+#
+# This file contains ONLY packages imported by the API server
+# (FastAPI + MCP + LangGraph agents + services).
+#
+# Pipeline-only packages (homeharvest, scrapling, playwright,
+# pandas, numpy, trafilatura) live in the root requirements.txt
+# and are installed in the Airflow image only.
+#
+# Regenerate: trace imports from app/ (excluding app/pipelines/),
+# mcp_vicinity/, and scripts/chat.py.
+# ══════════════════════════════════════════════════════════════
+
+# ── API Server ──────────────────────────────────────────────
+fastapi==0.135.3
+uvicorn==0.44.0
+starlette==1.0.0
+sse-starlette==3.3.4
+python-multipart==0.0.26
+
+# ── Auth ────────────────────────────────────────────────────
+bcrypt==5.0.0
+PyJWT==2.12.1
+
+# ── Database ────────────────────────────────────────────────
+snowflake-connector-python==4.4.0
+snowflake-sqlalchemy==1.9.0
+SQLAlchemy==2.0.49
+
+# ── Migrations (run on startup) ─────────────────────────────
+alembic==1.18.4
+Mako==1.3.10
+
+# ── Cache ───────────────────────────────────────────────────
+redis==7.4.0
+
+# ── LLM Providers ──────────────────────────────────────────
+langchain-core==1.3.0
+langchain-deepseek==1.0.1
+langchain-openai==1.1.14
+openai==2.30.0
+tiktoken==0.12.0
+
+# ── Agent Framework ─────────────────────────────────────────
+langgraph==1.1.8
+langgraph-checkpoint==4.0.2
+langgraph-prebuilt==1.0.10
+langgraph-sdk==0.3.13
+langsmith==0.7.32
+
+# ── MCP Server ──────────────────────────────────────────────
+mcp==1.27.0
+
+# ── Vector Search ───────────────────────────────────────────
+pinecone==8.1.2
+pinecone-plugin-assistant==3.0.3
+pinecone-plugin-interface==0.0.7
+
+# ── HTTP Client (routes, amenity lookup, health checks) ─────
+httpx==0.28.1
+httpcore==1.0.9
+httpx-sse==0.4.3
+
+# ── Config + Validation ────────────────────────────────────
+pydantic==2.12.5
+pydantic-settings==2.13.1
+pydantic_core==2.41.5
+python-dotenv==1.2.2
+PyYAML==6.0.3
+
+# ── Logging ─────────────────────────────────────────────────
+structlog==25.5.0
+
+# ── S3 Archival (used by base_pipeline, deferred import) ────
+boto3==1.42.85
+botocore==1.42.85
+s3transfer==0.16.0
+jmespath==1.1.0
+
+# ── Transitive (required by packages above) ─────────────────
+annotated-types==0.7.0
+anyio==4.13.0
+certifi==2026.2.25
+cffi==2.0.0
+charset-normalizer==3.4.7
+click==8.3.2
+cryptography==46.0.6
+distro==1.9.0
+greenlet==3.3.2
+h11==0.16.0
+idna==3.11
+Jinja2==3.1.6
+jiter==0.13.0
+jsonpatch==1.33
+jsonpointer==3.1.1
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+lxml==6.0.3
+markdown-it-py==4.0.0
+MarkupSafe==3.0.3
+mdurl==0.1.2
+msgspec==0.21.0
+orjson==3.11.8
+ormsgpack==1.12.2
+packaging==26.0
+platformdirs==4.9.4
+pycparser==3.0
+Pygments==2.20.0
+pyOpenSSL==26.0.0
+referencing==0.37.0
+regex==2026.4.4
+requests==2.33.1
+requests-toolbelt==1.0.0
+rich==14.3.3
+rpds-py==0.30.0
+six==1.17.0
+sniffio==1.3.1
+tenacity==9.1.4
+tld==0.13.2
+tomlkit==0.14.0
+typing-inspection==0.4.2
+typing_extensions==4.15.0
+tzdata==2026.1
+urllib3==2.6.3
+uuid_utils==0.14.1
+asn1crypto==1.5.1
+zstandard==0.25.0

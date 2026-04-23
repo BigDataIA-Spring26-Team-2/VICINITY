@@ -1,30 +1,99 @@
-version: '3.8'
+# ══════════════════════════════════════════════════════════════
+# VICINITY — Local Stack
+#
+#   docker compose -f docker/docker-compose.yml up -d
+#   docker compose -f docker/docker-compose.yml down
+#
+# Services:
+#   redis     → Cache             :6379
+#   api       → FastAPI + MCP     :8000
+#   frontend  → React via nginx   :3000  (proxies API internally)
+#   mcp       → MCP Server        :8001  (streamable-http for Claude Desktop)
+#
+# Airflow runs in its own compose (airflow/docker-compose.yml).
+# ══════════════════════════════════════════════════════════════
 
 services:
-  api:
-    build: ..
-    env_file:
-      - ../.env
-    ports:
-      - "8000:8000"
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
-    depends_on:
-      - redis
-
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
     volumes:
       - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
-  streamlit:
-    build: ..
+  api:
+    container_name: vicinity-api
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
     env_file:
       - ../.env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
     ports:
-      - "8501:8501"
-    command: streamlit run streamlit_app/app.py --server.port 8501
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/ping"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    volumes:
+      - ../config:/app/config:ro
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+
+  mcp:
+    container_name: vicinity-mcp
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    env_file:
+      - ../.env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    ports:
+      - "8001:8001"
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    command: ["python", "-m", "mcp_vicinity", "--transport", "streamable-http", "--port", "8001"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/mcp')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+      interval: 15s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    volumes:
+      - ../config:/app/config:ro
 
 volumes:
   redis-data:

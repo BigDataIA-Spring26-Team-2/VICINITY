@@ -17,7 +17,7 @@ defaults:
   retries: 2
   retry_delay_min: 5
   max_active_runs: 1
-  dagrun_timeout_min: 120
+  dagrun_timeout_min: 180
   start_date: "2026-04-11"
   catchup: false
   tags: ["vicinity"]
@@ -34,16 +34,16 @@ notifications:
 master:
   description: "Vicinity master pipeline — ingest, sync, score"
   schedule: "0 6 * * *"
-  dagrun_timeout_min: 150
+  dagrun_timeout_min: 180
   sla_min: 120
   tags: ["vicinity", "master"]
   gates:
     min_ingest_success: 5
     listings_required: true
   pools:
-    scraping: 2    # Playwright instances — memory-bound
-    api: 4         # HTTP API calls
-    compute: 2     # Snowflake-heavy tasks
+    scraping: 3
+    api: 4
+    compute: 2
 
 dags:
 
@@ -133,6 +133,7 @@ dags:
     command: "app.pipelines.ingest_listings_craigslist"
     pool: scraping
     required: false
+    fallback_for: "ingest_listings"
     description: "Craigslist fallback listings"
     schedule: null
     retries: 2
@@ -149,6 +150,70 @@ dags:
       delay: null
       no_headless: false
 
+  ingest_reddit_livability:
+    phase: 1
+    command: "app.pipelines.ingest_reddit"
+    pool: api
+    required: false
+    description: "Reddit livability signals (safety, noise, transit, etc.)"
+    schedule: null
+    retries: 2
+    retry_delay_min: 10
+    dagrun_timeout_min: 120
+    sla_min: 45
+    tags: ["vicinity", "ingest", "lifestyle"]
+    pipeline_flags:
+      category: "livability"
+      dry_run: false
+
+  ingest_reddit_lifestyle:
+    phase: 1
+    command: "app.pipelines.ingest_reddit"
+    pool: api
+    required: false
+    description: "Reddit lifestyle signals (user preferences)"
+    schedule: null
+    retries: 2
+    retry_delay_min: 10
+    dagrun_timeout_min: 120
+    sla_min: 45
+    tags: ["vicinity", "ingest", "lifestyle"]
+    pipeline_flags:
+      category: "lifestyle"
+      dry_run: false
+
+  ingest_google_news_livability:
+    phase: 1
+    command: "app.pipelines.ingest_google_news"
+    pool: scraping
+    required: false
+    description: "Google News livability signals"
+    schedule: null
+    retries: 2
+    retry_delay_min: 10
+    dagrun_timeout_min: 120
+    sla_min: 60
+    tags: ["vicinity", "ingest", "lifestyle"]
+    pipeline_flags:
+      category: "livability"
+      dry_run: false
+
+  ingest_google_news_lifestyle:
+    phase: 1
+    command: "app.pipelines.ingest_google_news"
+    pool: scraping
+    required: false
+    description: "Google News lifestyle signals (user preferences)"
+    schedule: null
+    retries: 2
+    retry_delay_min: 10
+    dagrun_timeout_min: 120
+    sla_min: 60
+    tags: ["vicinity", "ingest", "lifestyle"]
+    pipeline_flags:
+      category: "lifestyle"
+      dry_run: false
+
   ingest_eventbrite:
     phase: 1
     command: "app.pipelines.ingest_eventbrite"
@@ -162,44 +227,7 @@ dags:
     sla_min: 20
     tags: ["vicinity", "ingest", "lifestyle"]
     pipeline_flags:
-      preference_tag: null
-      query: null
-      pages: 1
-      dry_run: false
-
-  ingest_reddit:
-    phase: 1
-    command: "app.pipelines.ingest_reddit"
-    pool: api
-    required: false
-    description: "Reddit neighbourhood signals"
-    schedule: null
-    retries: 2
-    retry_delay_min: 10
-    dagrun_timeout_min: 60
-    sla_min: 45
-    tags: ["vicinity", "ingest", "lifestyle"]
-    pipeline_flags:
-      preference_tag: null
-      query: null
-      subreddit: null
-      dry_run: false
-
-  ingest_google_news:
-    phase: 1
-    command: "app.pipelines.ingest_google_news"
-    pool: scraping
-    required: false
-    description: "Google News neighbourhood signals"
-    schedule: null
-    retries: 2
-    retry_delay_min: 10
-    dagrun_timeout_min: 90
-    sla_min: 60
-    tags: ["vicinity", "ingest", "lifestyle"]
-    pipeline_flags:
-      preference_tag: null
-      query: null
+      category: "lifestyle"
       dry_run: false
 
   # ── Phase 2: Sync ──────────────────────────────────────────

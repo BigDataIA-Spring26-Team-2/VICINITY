@@ -28,6 +28,7 @@ x-airflow-common:
     - ./plugins:/opt/airflow/plugins
     - ..:/opt/airflow/project
     - ../.env:/opt/airflow/project/.env
+    - ../config:/opt/config
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on

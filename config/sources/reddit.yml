@@ -65,6 +65,7 @@ queries:
     - "korean restaurants"
     - "korean food"
 
+
 # Tags in this set use livability_subreddits with restrict_sr.
 # All other tags use global search with location_keyword.
 livability_tags:

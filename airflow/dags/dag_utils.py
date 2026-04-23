@@ -119,8 +119,8 @@ def _post_slack(blocks: list[dict], text: str = ""):
 def _task_log_url(ti) -> str:
     """Build a direct URL to the task log page."""
     return (
-        f"{_AIRFLOW_BASE_URL}/dags/{ti.dag_id}/grid"
-        f"?dag_run_id={ti.run_id}&task_id={ti.task_id}"
+        f"{_AIRFLOW_BASE_URL}/dags/{ti.dag_id}/"
+        f"grid?dag_run_id={ti.run_id}&task_id={ti.task_id}&tab=logs"
     )
 
 
@@ -307,13 +307,13 @@ def value_flag(name: str, cli_arg: str) -> str:
         + cli_arg + " {{ params." + name + " }}"
         + "{% endif %}"
     )
-
-
+ 
+ 
 def bool_flag(name: str, cli_arg: str) -> str:
     """Boolean flag: --flag (omitted when param is falsy)."""
     return "{% if params." + name + " %}" + cli_arg + "{% endif %}"
-
-
+ 
+ 
 def list_flag(name: str, cli_arg: str) -> str:
     """List flag: --flag a b c (omitted when param is None/empty)."""
     return (

@@ -1,0 +1,282 @@
+# config/services.yml
+# =================================================================
+# Service layer configuration -- controls all agent-facing query
+# and write operations.  Every tunable parameter lives here.
+#
+# Sections:
+#   listing_queries  -- search, detail, compare, scorecard history
+#   crime_queries    -- single-point and corridor ad-hoc queries
+#   complaint_queries -- single-point 311 queries
+#   amenity_lookup   -- live Overpass / Google Places queries
+#   pinecone_search  -- HyDE retrieval settings
+#   sql_freeform     -- schema-injected freeform SELECT
+#   url_health       -- URL validation and flagging
+#   user_data        -- profile, bookmark, conversation settings
+# =================================================================
+
+
+# -- Listing Queries ---------------------------------------------
+listing_queries:
+
+  # Feature flags
+  enabled: true
+  include_scoring_metadata: true   # Return full scoring_metadata VARIANT in detail queries
+  include_description_text: true   # Return listing description (can be long)
+  include_raw_json: false          # Never expose raw pipeline JSON to agents
+
+  # Search defaults
+  search:
+    max_results: 50                # Hard cap on search result count
+    default_results: 20            # Default if agent doesn't specify
+    default_sort: "safety_score"   # safety_score | livability_score | price | list_date
+    default_sort_order: "desc"     # asc | desc
+    allowed_sort_fields:
+      - "safety_score"
+      - "livability_score"
+      - "price"
+      - "beds"
+      - "sqft"
+      - "list_date"
+      - "days_on_mls"
+
+  # Comparison
+  compare:
+    max_listings: 10               # Max listings in one comparison query
+    include_scorecard_latest: true  # Join latest LOCATION_SCORECARD row
+
+  # Scorecard history
+  scorecard_history:
+    max_days: 90                   # Max date range for scorecard queries
+    default_days: 14               # Default lookback (matches watch period)
+
+  # Route scorecard history
+  route_scorecard_history:
+    max_days: 90
+    default_days: 14
+
+  # URL filtering
+  url_filtering:
+    enabled: true                  # Filter out confirmed_dead URLs
+    exclude_statuses:              # These url_status values are excluded
+      - "confirmed_dead"
+    warn_statuses:                 # These are returned but flagged
+      - "flagged"
+
+
+# -- Crime Queries -----------------------------------------------
+crime_queries:
+
+  enabled: true
+
+  # Single-point query defaults
+  near_point:
+    default_radius_m: 1000
+    max_radius_m: 3000
+    default_window_days: 30
+    max_window_days: 365
+    max_results: 500               # Row cap for single-point queries
+
+  # Corridor query defaults (drill-down after route scoring)
+  near_corridor:
+    default_buffer_m: 300          # Matches routes.yml corridor.buffer_m
+    max_buffer_m: 1000
+    default_window_days: 30
+    max_window_days: 365
+    max_results: 1000
+
+  # Hourly distribution
+  hourly:
+    default_months_back: 6
+    max_months_back: 24
+
+  # Neighborhood aggregate
+  neighborhood_stats:
+    default_window_days: 30
+    max_window_days: 365
+
+
+# -- Complaint Queries -------------------------------------------
+complaint_queries:
+
+  enabled: true
+
+  near_point:
+    default_radius_m: 500
+    max_radius_m: 3000
+    default_window_days: 30
+    max_window_days: 365
+    max_results: 500
+
+  # Category filter options (match classification.yml output)
+  valid_categories:
+    - "noise"
+    - "pest"
+    - "rodent"
+    - "road"
+    - "sanitation"
+    - "heat"
+    - "housing"
+    - "other"
+
+
+# -- Amenity Lookup (live) ---------------------------------------
+amenity_lookup:
+
+  enabled: true
+
+  # Stored amenities (from RAW.AMENITIES)
+  stored:
+    enabled: true
+    default_radius_m: 800
+    max_radius_m: 3000
+    max_results: 100
+
+  # Live Overpass queries (for preference-specific lookups)
+  overpass:
+    enabled: true
+    base_url: "https://overpass-api.de/api/interpreter"
+    timeout: 30
+    default_radius_m: 800
+    max_radius_m: 3000
+    max_results: 50
+    rate_limit_delay: 2.0          # Seconds between live queries
+    cache_ttl: 86400               # Cache live results for 1 day
+
+  # Google Places (if configured)
+  google_places:
+    enabled: true                # Enable when Google Places API key is set
+    default_radius_m: 800
+    max_radius_m: 3000
+    max_results: 20
+    cache_ttl: 86400
+
+
+# -- Pinecone Search (HyDE) -------------------------------------
+pinecone_search:
+
+  enabled: true
+
+  # HyDE (Hypothetical Document Embedding)
+  hyde:
+    enabled: true                  # Toggle HyDE on/off; when off, embeds user query directly
+    # LLM settings inherited from classification.yml via ProviderChain
+    # (DeepSeek primary, OpenAI fallback, temperature from classification config)
+    system_prompt: >
+      You are a Boston housing data assistant. Given a user question,
+      write a short hypothetical answer (2-3 sentences) as if you were
+      a local crime report, Reddit post, or news article that would
+      answer this question. Be specific about Boston locations, times,
+      and incident types. Do not add disclaimers or caveats.
+
+  # Retrieval settings
+  retrieval:
+    top_k: 10                      # Vectors to retrieve per query
+    min_score: 0.65                # Minimum cosine similarity threshold
+    max_retries: 3                 # Retry with lowered score threshold on empty results
+    retry_score_decay: 0.05        # Lower min_score by this much per retry
+
+  # Embedding
+  embedding:
+    model: "text-embedding-3-small"
+    dimensions: 1536
+
+  # Multi-query (when single retrieval is insufficient)
+  multi_query:
+    enabled: true                  # Allow agent to run multiple retrieval passes
+    max_queries: 3                 # Max retrieval passes per user question
+    deduplicate: true              # Remove duplicate vectors across passes
+
+
+# -- SQL Freeform ------------------------------------------------
+sql_freeform:
+
+  enabled: true
+
+  # Execution constraints
+  execution:
+    max_rows: 1000                 # Hard row limit on all freeform queries
+    timeout_seconds: 15            # Query timeout
+    max_retries: 3                 # Agent self-correction retries on SQL error
+    snowflake_role: null           # null = use default; set to readonly role name for prod
+    echo_sql: true                 # Always include the SQL in the response
+
+  # Schema injection
+  schema:
+    include_column_types: true
+    include_relationships: true
+    include_spatial_hints: true    # Remind agent about ST_DISTANCE, bbox filters
+    include_time_hints: true       # Remind agent about date formats, timezone
+
+  # Safety
+  safety:
+    blocked_keywords:              # Reject queries containing these (case-insensitive)
+      - "DROP"
+      - "DELETE"
+      - "INSERT"
+      - "UPDATE"
+      - "ALTER"
+      - "CREATE"
+      - "GRANT"
+      - "REVOKE"
+      - "TRUNCATE"
+      - "MERGE"
+    allowed_schemas:               # Only these schemas are queryable
+      - "RAW"
+      - "SCORECARDS"
+      - "USER_DATA"
+
+
+# -- URL Health --------------------------------------------------
+url_health:
+
+  enabled: true
+
+  # Validation settings
+  validation:
+    timeout: 10                    # HTTP HEAD request timeout (seconds)
+    max_retries: 2                 # Retry failed checks before marking dead
+    retry_delay: 3.0               # Seconds between retries
+    valid_status_codes:            # Codes that mean "URL is alive"
+      - 200
+      - 301
+      - 302
+      - 307
+      - 308
+    user_agent: "VicinityBot/1.0 (housing-intelligence; url-check)"
+
+  # Flagging
+  flagging:
+    auto_check_on_flag: true       # When user flags a URL, immediately HEAD-check it
+    max_flags_before_dead: 3       # After N user flags without revalidation, mark dead
+    revalidation_interval_hours: 24  # Don't re-check a URL more than once per day
+
+  # Tables to check
+  targets:
+    - table: "RAW.LISTINGS"
+      url_column: "source_url"
+      id_column: "listing_id"
+    - table: "RAW.LIFESTYLE_SIGNALS"
+      url_column: "url"
+      id_column: "signal_id"
+
+
+# -- User Data ---------------------------------------------------
+user_data:
+
+  profiles:
+    max_per_user: 5
+    max_preference_tags: 20
+    max_destinations_per_profile: 10
+
+  bookmarks:
+    max_per_user: 20
+    max_watch_days: 30             # Maximum watch period duration
+    default_watch_days: 14
+
+  conversations:
+    max_message_length: 10000      # Truncate messages beyond this
+    summary_trigger_count: 20      # Compress after N messages in a session
+    summary_max_tokens: 500        # Max tokens for LLM-generated summary
+
+  sessions:
+    max_summaries_loaded: 3        # Load N most recent summaries at session start

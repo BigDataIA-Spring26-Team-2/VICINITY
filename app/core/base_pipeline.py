@@ -11,7 +11,7 @@ import argparse
 from abc import ABC, abstractmethod
 from typing import Optional
 import sys
-
+import os
 import structlog
 import snowflake.connector
 from pydantic import BaseModel
@@ -27,7 +27,7 @@ load_dotenv()
 
 renderer = (
     structlog.dev.ConsoleRenderer()
-    if sys.stderr.isatty()
+    if sys.stderr.isatty() or os.environ.get("VICINITY_LOG_FORMAT") == "console"
     else structlog.processors.JSONRenderer()
 )
 

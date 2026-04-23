@@ -20,7 +20,7 @@ craigslist:
     - name: "Brookline"
       postal: "02445"
       search_distance: 3
-  max_listings_per_run: 200
+  max_listings_per_run: 50
   delay_between_fetches: 3.0
   headless: true
   max_retries: 3

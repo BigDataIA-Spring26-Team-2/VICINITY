@@ -7,6 +7,12 @@ homeharvest:
     - "Cambridge, MA"
     - "Somerville, MA"
     - "Brookline, MA"
+    - "Allston, MA"
+    - "Back Bay, Boston, MA"
+    - "South End, Boston, MA"
+    - "Jamaica Plain, MA"
+    - "Dorchester, MA"
+    - "South Boston, MA"
   listing_type: "for_rent"
   past_days: 7
   delay_between_calls: 4.0

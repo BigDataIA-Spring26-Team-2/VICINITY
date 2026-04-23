@@ -1,0 +1,27 @@
+# config/sources/routes.yml
+#
+# Google Maps routing configuration.
+# API keys: set GOOGLE_MAPS_KEY_1, GOOGLE_MAPS_KEY_2, ... in .env
+# The module tries each key in order on 4xx errors (quota/billing).
+
+connection:
+  base_url: "https://maps.googleapis.com/maps/api"
+  timeout: 10
+  env_key_prefix: "GOOGLE_MAPS_API"
+
+# Route computation defaults (overridable per call)
+defaults:
+  mode: "transit"           # transit | walking | driving | bicycling
+  departure_hour: 8         # 24h local time, used for transit scheduling
+  alternatives: false
+
+# Corridor safety scoring
+corridor:
+  buffer_m: 300             # meters from route polyline to count incidents
+  hour_window: 2            # ± hours from departure_hour for crime filtering
+
+# Cache TTL (seconds) — routes don't change often
+cache:
+  geocode_ttl: 604800       # 7 days
+  directions_ttl: 86400     # 1 day
+  distance_ttl: 86400       # 1 day

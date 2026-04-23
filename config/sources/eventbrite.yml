@@ -13,6 +13,26 @@ location:
   slug: "ma--boston"
   max_radius_km: 15
 
+# ── Queries ──────────────────────────────────────────────────
+# Tag → list of Eventbrite search slugs. Organizer Agent may write here.
+queries:
+  live_music:
+    - "live-music"
+    - "concerts"
+  korean_food:
+    - "korean-food"
+  yoga:
+    - "yoga"
+  dining:
+    - "food-and-drink"
+  fitness:
+    - "fitness"
+    - "health"
+
+# Tags treated as livability signals.
+# All other tags are lifestyle. Eventbrite is almost entirely lifestyle.
+livability_tags: []
+
 rate_limit:
   delay_between_requests: 1.0
   backoff_base: 2.0

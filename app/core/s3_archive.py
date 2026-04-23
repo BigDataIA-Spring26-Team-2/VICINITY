@@ -114,7 +114,8 @@ class S3Archiver:
                 gz.write(json.dumps(record).encode("utf-8"))
                 gz.write(b"\n")
 
-        buf.seek(0)
+        buf = io.BytesIO(buf.getvalue())
+
 
         now = datetime.now(timezone.utc)
         key = (

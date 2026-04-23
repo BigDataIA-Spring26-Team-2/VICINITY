@@ -1,0 +1,38 @@
+# ── Git / IDE ──
+.git
+.gitignore
+.vscode
+.idea
+*.md
+
+# ── Python ──
+__pycache__
+*.pyc
+*.pyo
+.venv
+venv
+.pytest_cache
+.ruff_cache
+*.egg-info
+
+# ── Not needed in API image ──
+tests/
+airflow/
+infra/
+streamlit_app/
+frontend/
+node_modules/
+data/
+output/
+images/
+
+# ── Env / secrets ──
+.env
+deploy.env
+*.env.local
+# Allow frontend/.env through — Vite needs it at build time
+!frontend/.env
+
+# ── Build artifacts ──
+*.tar.gz
+_deploy*.sh

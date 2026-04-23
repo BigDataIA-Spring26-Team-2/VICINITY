@@ -22,7 +22,6 @@ queries:
     - "boston construction noise"
     - "boston noise complaints"
   transit:
-    - "boston MBTA delays"
     - "boston transit service"
   rent:
     - "boston rent prices"
@@ -32,14 +31,17 @@ queries:
   # Organizer Agent appends per-user tags during onboarding.
   live_music:
     - "boston live music"
-    - "boston concert"
   korean_food:
-    - "boston korean restaurant"
     - "boston korean food"
   yoga:
     - "boston yoga studio"
   dining:
     - "boston restaurant opening"
+
+
+  # -- Added by Organizer (2026-04-21 05:34 UTC) --
+  gun_violence_roxbury:
+    - "crime Roxbury Massachusetts"
 
 # Tags in this set scope queries as livability signals.
 # All other tags are treated as lifestyle signals.

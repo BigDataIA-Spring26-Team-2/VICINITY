@@ -1,0 +1,63 @@
+# ══════════════════════════════════════════════════════════════
+# VICINITY — API Image (FastAPI + MCP Server)
+#
+# Serves:
+#   - 22 REST endpoints on port 8000
+#   - MCP SSE transport on the same port
+#   - Alembic migrations on startup
+#
+# This image contains ONLY API runtime dependencies.
+# Pipeline-only packages (homeharvest, scrapling, playwright,
+# pandas, numpy, trafilatura) are NOT installed here —
+# they live in the Airflow image.
+#
+# Build context: project root
+#   docker build -f docker/Dockerfile.api -t vicinity-api:latest .
+#
+# Run:
+#   docker run --env-file .env -p 8000:8000 vicinity-api:latest
+# ══════════════════════════════════════════════════════════════
+
+FROM python:3.12-slim
+
+# ── System deps for C extensions (snowflake, cryptography, lxml) ──
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        gcc g++ curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# ── Non-root user ──
+RUN groupadd --gid 1000 vicinity && \
+    useradd --uid 1000 --gid vicinity --create-home vicinity
+
+WORKDIR /app
+
+# ── Python deps (cached layer — only rebuilds when requirements change) ──
+COPY requirements-api.txt /tmp/requirements-api.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-api.txt && \
+    rm /tmp/requirements-api.txt
+
+# ── Application code ──
+COPY app/          ./app/
+COPY mcp_vicinity/ ./mcp_vicinity/
+COPY config/       ./config/
+COPY scripts/      ./scripts/
+COPY alembic/      ./alembic/
+COPY alembic.ini   ./alembic.ini
+
+# ── Own everything as vicinity user ──
+RUN chown -R vicinity:vicinity /app
+
+USER vicinity
+
+# ── Runtime ──
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl -sf http://localhost:8000/ping || exit 1
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

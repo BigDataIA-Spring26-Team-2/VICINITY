@@ -3,19 +3,15 @@ target_table: "RAW.AMENITIES"
 
 connection:
   base_url: "https://overpass-api.de/api/interpreter"
-  timeout: 60
+  timeout: 90
 
-# Boston metro bbox from spatial.yml — covers Boston, Cambridge,
-# Somerville, Brookline, Watertown, Medford, Everett, etc.
+# Greater Boston metro — extends to Framingham, Braintree, Lowell, coast
 bbox:
-  south: 42.2
-  west: -71.3
-  north: 42.5
-  east: -70.9
+  south: 42.15
+  west: -71.45
+  north: 42.55
+  east: -70.85
 
-# Each entry becomes one Overpass QL query.
-# key = OSM tag key (stored as category), value = OSM tag value (stored as subcategory).
-# Queries are batched by key at runtime — all "amenity" values become one regex query.
 queries:
   # Groceries & essentials
   - key: "shop"
@@ -26,6 +22,34 @@ queries:
     value: "grocery"
   - key: "shop"
     value: "laundry"
+  - key: "shop"
+    value: "dry_cleaning"
+  - key: "shop"
+    value: "bakery"
+  - key: "shop"
+    value: "butcher"
+  - key: "shop"
+    value: "deli"
+  - key: "shop"
+    value: "greengrocer"
+  - key: "shop"
+    value: "alcohol"
+  - key: "shop"
+    value: "hardware"
+  - key: "shop"
+    value: "electronics"
+  - key: "shop"
+    value: "pet"
+  - key: "shop"
+    value: "bicycle"
+  - key: "shop"
+    value: "clothes"
+  - key: "shop"
+    value: "books"
+  - key: "shop"
+    value: "department_store"
+  - key: "shop"
+    value: "mall"
 
   # Food & drink
   - key: "amenity"
@@ -40,6 +64,12 @@ queries:
     value: "pub"
   - key: "amenity"
     value: "nightclub"
+  - key: "amenity"
+    value: "ice_cream"
+  - key: "amenity"
+    value: "food_court"
+  - key: "amenity"
+    value: "biergarten"
 
   # Health
   - key: "amenity"
@@ -52,16 +82,32 @@ queries:
     value: "doctors"
   - key: "amenity"
     value: "dentist"
+  - key: "amenity"
+    value: "veterinary"
+  - key: "healthcare"
+    value: "physiotherapist"
+  - key: "healthcare"
+    value: "optometrist"
 
   # Education & childcare
   - key: "amenity"
     value: "school"
+  - key: "amenity"
+    value: "university"
+  - key: "amenity"
+    value: "college"
   - key: "amenity"
     value: "kindergarten"
   - key: "amenity"
     value: "childcare"
   - key: "amenity"
     value: "library"
+  - key: "amenity"
+    value: "language_school"
+  - key: "amenity"
+    value: "music_school"
+  - key: "amenity"
+    value: "driving_school"
 
   # Services
   - key: "amenity"
@@ -74,6 +120,18 @@ queries:
     value: "place_of_worship"
   - key: "amenity"
     value: "community_centre"
+  - key: "amenity"
+    value: "coworking_space"
+  - key: "amenity"
+    value: "car_rental"
+  - key: "amenity"
+    value: "car_wash"
+  - key: "amenity"
+    value: "fuel"
+  - key: "amenity"
+    value: "charging_station"
+  - key: "amenity"
+    value: "parking"
 
   # Safety
   - key: "amenity"
@@ -81,11 +139,27 @@ queries:
   - key: "amenity"
     value: "fire_station"
 
-  # Entertainment
+  # Entertainment & culture
   - key: "amenity"
     value: "cinema"
   - key: "amenity"
     value: "theatre"
+  - key: "amenity"
+    value: "arts_centre"
+  - key: "amenity"
+    value: "conference_centre"
+  - key: "amenity"
+    value: "events_venue"
+  - key: "amenity"
+    value: "casino"
+  - key: "tourism"
+    value: "museum"
+  - key: "tourism"
+    value: "gallery"
+  - key: "tourism"
+    value: "zoo"
+  - key: "tourism"
+    value: "aquarium"
 
   # Fitness & recreation
   - key: "leisure"
@@ -102,11 +176,35 @@ queries:
     value: "swimming_pool"
   - key: "leisure"
     value: "garden"
+  - key: "leisure"
+    value: "ice_rink"
+  - key: "leisure"
+    value: "bowling_alley"
+  - key: "leisure"
+    value: "golf_course"
+  - key: "leisure"
+    value: "marina"
+  - key: "leisure"
+    value: "pitch"
+  - key: "leisure"
+    value: "track"
+  - key: "leisure"
+    value: "nature_reserve"
+  - key: "leisure"
+    value: "dance"
+
+  # Transport hubs
+  - key: "amenity"
+    value: "bus_station"
+  - key: "amenity"
+    value: "ferry_terminal"
+  - key: "amenity"
+    value: "bicycle_rental"
 
 freshness_days: 30
 
 rate_limit:
-  delay_between_queries: 15.0
+  delay_between_queries: 12.0
   max_attempts: 3
 
 schedule: "monthly"
