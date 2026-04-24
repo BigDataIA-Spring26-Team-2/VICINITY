@@ -1,8 +1,13 @@
 """Tests for app.routers.listings — /listings/search, /compare, /{id}, /{id}/scorecard.
 
 Patch target: the router imports functions at module level:
-    from app.services.listing_queries import search_listings, get_listing_detail, ...
+    from app.services.listing_queries import search_listings, compare_listings, scorecard_history
 So we patch where the name is bound: app.routers.listings.search_listings
+
+NOTE on /listings/{id}: this endpoint runs inline SQL (CTE + correlated
+subquery workaround for Snowflake VARIANT handling) rather than calling a
+service function. TestListingDetail drives behavior through
+MockCursor.set_results / set_error instead of patching a service name.
 """
 
 import pytest
@@ -85,26 +90,57 @@ class TestListingsSearch:
 
 
 class TestListingDetail:
+    """The /listings/{id} endpoint runs inline SQL (CTE + correlated subquery
+    workaround for Snowflake VARIANT handling). There is no service function
+    to patch — behavior is driven by what MockCursor returns. Each test uses
+    cursor.set_results(columns, rows) or cursor.set_error(exc).
+    """
+
+    # Columns must match the SELECT list in the detail endpoint's SQL, in
+    # the exact same order. MockCursor.description uppercases these; the
+    # router's _rows_to_dicts lowercases again, so round-trip is fine.
+    _DETAIL_COLS = [
+        "listing_id", "source", "source_url",
+        "price", "beds", "baths", "sqft",
+        "street", "unit", "city", "zip_code", "neighborhood",
+        "lat", "lon",
+        "primary_photo_url", "mls_id", "mls_status",
+        "days_on_mls", "agent_name", "style", "list_date",
+        "is_current", "first_seen_at", "last_seen_at",
+        "description_text",
+        "safety_score", "livability_score",
+        "summary_is_active",
+        "nearest_stops", "last_scored_at",
+        "safety_metadata", "livability_metadata",
+        "lifestyle_overlay",
+        "url_status",
+    ]
+
+    @classmethod
+    def _detail_row(cls, overrides=None):
+        """Build a row tuple matching _DETAIL_COLS, defaults from LISTING_ROW."""
+        merged = {**LISTING_ROW, **(overrides or {})}
+        return tuple(merged.get(col) for col in cls._DETAIL_COLS)
 
     def test_returns_detail(self, client, cursor):
-        with patch(f"{_R}.get_listing_detail", return_value=_qr(data=[LISTING_ROW])):
-            resp = client.get("/listings/lst-001")
+        cursor.set_results(self._DETAIL_COLS, [self._detail_row()])
+        resp = client.get("/listings/lst-001")
         assert resp.status_code == 200
         assert resp.json()["data"][0]["street"] == "123 Main St"
 
     def test_not_found(self, client, cursor):
-        with patch(f"{_R}.get_listing_detail", return_value=_qr(data=[])):
-            resp = client.get("/listings/lst-nonexistent")
+        cursor.set_results(self._DETAIL_COLS, [])
+        resp = client.get("/listings/lst-nonexistent")
         assert resp.status_code == 404
 
     def test_service_error(self, client, cursor):
-        with patch(f"{_R}.get_listing_detail", return_value=_qr(success=False, error="timeout")):
-            resp = client.get("/listings/lst-001")
+        cursor.set_error(Exception("timeout"))
+        resp = client.get("/listings/lst-001")
         assert resp.status_code == 500
 
     def test_no_auth_required(self, client, cursor):
-        with patch(f"{_R}.get_listing_detail", return_value=_qr(data=[LISTING_ROW])):
-            resp = client.get("/listings/lst-001")
+        cursor.set_results(self._DETAIL_COLS, [self._detail_row()])
+        resp = client.get("/listings/lst-001")
         assert resp.status_code == 200
 
 

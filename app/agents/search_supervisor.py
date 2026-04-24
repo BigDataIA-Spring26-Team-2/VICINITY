@@ -64,14 +64,11 @@ async def search_node(state: AgentState) -> dict[str, Any]:
     Invokes LLM with search tools. The LLM decides criteria and scoring
     strategy via the ReAct loop. When it finishes (no tool_calls),
     the result is placed in sub_agent_result for Chat Agent synthesis.
-
-    Sanitizes state["messages"] before building the LLM input, same as
-    the other three agent nodes. Orphaned tool_calls from crashed turns
-    or checkpointer loads never reach the LLM.
     """
     log = logger.bind(trace_id=state.get("trace_id"), node="search")
 
-    messages = [SystemMessage(content=_get_system_prompt())]
+    messages = []
+    messages.append(SystemMessage(content=_get_system_prompt()))
 
     context = _build_context(state)
     if context:

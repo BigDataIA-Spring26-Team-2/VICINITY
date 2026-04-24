@@ -1,14 +1,10 @@
 """Report Generator — async node for watch period comparison reports.
 
 Calls compile_evidence, then LLM synthesizes a structured comparison
-report. The report IS the final user-facing artifact — it follows a
-fixed template (Recommendation / At a Glance / Per-Listing Analysis /
-Tradeoffs / Data Confidence) and does not get rewritten by the Chat
-Agent. The graph routes report_react -> guardrail directly when the
-ReAct loop finishes.
+report. Writes to sub_agent_result for Chat Agent to present.
 
 Graph wiring:
-  input_gate -> (route=report) -> report_react <-> report_tools -> guardrail -> END
+  input_gate -> (route=report) -> report_react <-> report_tools -> chat_react -> END
 """
 
 from __future__ import annotations
@@ -73,7 +69,8 @@ async def report_node(state: AgentState) -> dict[str, Any]:
     """
     log = logger.bind(trace_id=state.get("trace_id"), node="report")
 
-    messages = [SystemMessage(content=_get_system_prompt())]
+    messages = []
+    messages.append(SystemMessage(content=_get_system_prompt()))
 
     context = _build_context(state)
     if context:
@@ -86,9 +83,14 @@ async def report_node(state: AgentState) -> dict[str, Any]:
 
     log.info("report_node_complete", has_tool_calls=bool(response.tool_calls))
 
-    # When the ReAct loop finishes (no more tool_calls), the LLM's
-    # response IS the final structured report. It flows directly to
-    # guardrail as the user-facing output — no Chat Agent re-synthesis,
-    # which would strip the template structure (## Recommendation,
-    # ## At a Glance table, etc.) the user prompt demands.
-    return {"messages": [response]}
+    if response.tool_calls:
+        return {"messages": [response]}
+
+    return {
+        "messages": [response],
+        "sub_agent_result": {
+            "status": "complete",
+            "agent": "report_generator",
+            "content": response.content,
+        },
+    }

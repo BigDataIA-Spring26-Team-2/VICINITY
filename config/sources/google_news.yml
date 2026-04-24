@@ -52,6 +52,7 @@ queries:
     - "Kendall Square entertainment Boston"
     - "Central Square bars MIT area"
 
+
 # Tags in this set scope queries as livability signals.
 # All other tags are treated as lifestyle signals.
 livability_tags:

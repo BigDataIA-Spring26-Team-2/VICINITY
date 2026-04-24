@@ -1,67 +1,75 @@
-"""Message list sanitization.
+"""Message sanitization for LLM-input safety.
 
-One function: sanitize_messages. Enforces the OpenAI / DeepSeek
-contract that every AIMessage with tool_calls is immediately
-followed by ToolMessages — one per tool_call_id. Violations
-cause the LLM API to reject the entire request.
+The LLM APIs require that every AIMessage with tool_calls be followed
+by ToolMessages matching each tool_call_id. If the state history
+contains an AIMessage with tool_calls that were never answered (HITL
+rejected/modified, crash between tool_call and ToolMessage, partial
+checkpointer load), the next LLM call rejects the conversation with:
 
-Called at the top of every agent node (chat_react, search_node,
-report_node, organizer_plan), before the LLM is invoked. Any
-orphaned tool_calls that reach a node — from mid-turn crashes,
-partial checkpointer writes, or a future persistent checkpointer —
-get paired with a stub ToolMessage before the LLM sees them.
+  "An assistant message with 'tool_calls' must be followed by tool
+   messages responding to each 'tool_call_id'."
 
-Pure function. Does not mutate input. Returns a new list.
+sanitize_messages removes any AIMessage whose tool_calls have no
+matching ToolMessage. Safe to call on any state["messages"] slice
+before building an LLM input.
 """
 
 from __future__ import annotations
 
-import json
-from typing import Iterable
+from typing import Iterable, List
 
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 
 
-_STUB_CONTENT = json.dumps({
-    "success": False,
-    "error": "Tool execution did not complete.",
-})
+def sanitize_messages(messages: Iterable[BaseMessage]) -> List[BaseMessage]:
+    """Return a copy of messages with orphaned tool_calls stripped.
 
+    For each AIMessage with tool_calls, if any tool_call_id has no
+    matching ToolMessage later in the list, that AIMessage is replaced
+    with a plain AIMessage (content only, tool_calls dropped). Content-
+    less AIMessages with orphaned tool_calls are removed entirely.
+    ToolMessages whose tool_call_id is not declared by any AIMessage
+    are also dropped.
 
-def sanitize_messages(messages: Iterable[BaseMessage]) -> list[BaseMessage]:
-    """Return a well-formed message list.
-
-    For every AIMessage with tool_calls, each tool_call_id must have a
-    following ToolMessage in the list. Missing matches get a stub
-    ToolMessage inserted immediately after the AIMessage.
-
-    Does not mutate input.
+    Relative order of surviving messages is preserved.
     """
-    msgs = list(messages)
-    if not msgs:
-        return msgs
+    msg_list = list(messages)
 
-    # Index every existing ToolMessage by tool_call_id
-    existing_tool_ids = {
-        m.tool_call_id for m in msgs
+    answered_ids = {
+        m.tool_call_id
+        for m in msg_list
         if isinstance(m, ToolMessage) and getattr(m, "tool_call_id", None)
     }
 
-    out: list[BaseMessage] = []
-    for m in msgs:
-        out.append(m)
-        if not isinstance(m, AIMessage):
+    declared_ids = set()
+    for m in msg_list:
+        if isinstance(m, AIMessage) and getattr(m, "tool_calls", None):
+            for tc in m.tool_calls:
+                tc_id = tc.get("id") if isinstance(tc, dict) else None
+                if tc_id:
+                    declared_ids.add(tc_id)
+
+    out: List[BaseMessage] = []
+    for m in msg_list:
+        if isinstance(m, AIMessage) and getattr(m, "tool_calls", None):
+            tc_ids = [
+                tc.get("id") for tc in m.tool_calls
+                if isinstance(tc, dict) and tc.get("id")
+            ]
+            if tc_ids and all(tc_id in answered_ids for tc_id in tc_ids):
+                out.append(m)
+            else:
+                content = m.content or ""
+                if content:
+                    out.append(AIMessage(content=content))
             continue
-        tcs = getattr(m, "tool_calls", None) or []
-        for tc in tcs:
-            tc_id = tc.get("id") if isinstance(tc, dict) else None
-            if not tc_id or tc_id in existing_tool_ids:
-                continue
-            out.append(ToolMessage(
-                content=_STUB_CONTENT,
-                tool_call_id=tc_id,
-                name=tc.get("name", "unknown"),
-            ))
-            existing_tool_ids.add(tc_id)
+
+        if isinstance(m, ToolMessage):
+            tc_id = getattr(m, "tool_call_id", None)
+            if tc_id and tc_id in declared_ids and tc_id in answered_ids:
+                out.append(m)
+            continue
+
+        out.append(m)
 
     return out
