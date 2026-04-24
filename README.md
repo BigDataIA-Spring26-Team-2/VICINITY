@@ -105,18 +105,49 @@ A few design decisions are worth explaining because they show up across the grap
 
 ## Data Pipeline
 
-Airflow's master DAG runs nightly at 06:00 UTC with `catchup=False`, so the scheduler never tries to backfill missed runs. The DAG has three phases.
+Airflow's master DAG runs nightly at **06:00 UTC** with `catchup=False`. The scheduler never backfills missed runs. Three phases, gated between them.
 
-**Phase one runs ten ingestion pipelines in parallel.** Crime incidents and 311 complaints come from Boston's CKAN data portal. Citizen pulls real-time incident reports. MLS listings come through HomeHarvest with a Craigslist fallback for non-MLS listings like owner-listed sublets. Reddit and Google News feed the lifestyle signal store with one pipeline each for livability topics (safety, noise, transit) and preference topics (food, gyms, nightlife). Eventbrite rounds out the set. Every pipeline is idempotent: records are deduplicated by content hash before insert, so a pipeline that crashes halfway can be re-run without creating duplicates.
+**Preflight** runs before any task. It fails fast with a clear error if the infrastructure isn't ready.
 
-A **gate between phases one and two** requires at least five pipelines to have succeeded AND the listings pipeline specifically to have completed. Listings are load-bearing: without fresh listings, scoring has nothing to score. If the gate fails, phases two and three do not run and Slack gets an alert with links to the failed task logs.
+* Snowflake connectivity + schema check (`RAW`, `SCORECARDS`, `USER_DATA` must exist).
+* Required API keys present: `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `PINECONE_API_KEY`.
+* Playwright is importable (needed for scraping fallbacks).
+* External endpoints reachable: `data.boston.gov`, `citizen.com`, `api.deepseek.com`.
+* At least 500 MB free disk on the VM.
+* Airflow pools (`scraping`, `api`, `compute`) are created if missing.
 
-**Phase two syncs new narrative embeddings to Pinecone.** Only signals that changed or are newly classified get embedded, so this phase short-circuits cleanly on quiet days.
+**Phase 1 — Ingest.** Ten pipelines run in parallel. Every pipeline is idempotent: records are deduplicated by content hash before insert, so a crash halfway through can be re-run without creating duplicates.
 
-**Phase three computes daily scorecards.** For every active listing, the scorer queries crime incidents, 311 complaints, amenities, and transit stops within configurable radii. It ranks listings by percentile across each dimension and writes one row per listing per day to `LOCATION_SCORECARD`, along with a denormalized snapshot in `LISTING_SUMMARY` that the search API reads. Every row carries a confidence value, a year-over-year change where data allows, and a `scoring_metadata` blob with full provenance including the exact radii, windows, and weights used to compute the score. A listing with a low safety score and low confidence might just be in a neighborhood with sparse data, and the metadata makes that distinction explicit rather than hiding it.
+* **Crime** and **311 complaints** from Boston's CKAN data portal.
+* **Citizen** real-time incident reports.
+* **MLS listings** via HomeHarvest, with a **Craigslist** fallback for non-MLS listings like owner-listed sublets.
+* **Reddit** and **Google News**, one pipeline each for livability topics (safety, noise, transit) and preference topics (food, gyms, nightlife).
+* **Eventbrite** for local events.
 
-**Slack notifications** fire when the pipeline starts, when a task retries, when an SLA is missed, and when the run completes. Failed-task messages include the task name, number of attempts, duration, and a direct link to the Airflow logs. The Slack webhook is configured through the `SLACK_WEBHOOK_URL` environment variable. If it is absent, the pipeline runs normally and notifications are silently skipped.
+**Gate between Phase 1 and Phase 2.** Enforces data quality before downstream work runs.
 
+* At least five pipelines must have succeeded. (configurable)
+* The listings pipeline must have succeeded (listings are load-bearing; without them, scoring has nothing to score).
+* If the gate fails, Phases 2 and 3 are skipped and Slack posts an alert with links to the failed task logs.
+
+**Phase 2 — Sync.** New narrative embeddings are pushed to Pinecone. Only signals that changed or are newly classified get embedded, so this phase short-circuits cleanly on quiet days.
+
+**Phase 3 — Score.** Daily scorecards are computed for every active listing.
+
+* Scorer queries crime incidents, 311 complaints, amenities, and transit stops within configurable radii.
+* Listings ranked by percentile across each dimension.
+* One row per listing per day written to `LOCATION_SCORECARD`.
+* A denormalized snapshot updates `LISTING_SUMMARY`, which the search API reads.
+* Every row carries a confidence value, a year-over-year change where data allows, and a `scoring_metadata` blob with full provenance (exact radii, windows, and weights used). A low score with low confidence likely means sparse data coverage, not actual bad conditions — the metadata makes that distinction explicit.
+
+**Slack notifications** fire at four points in the pipeline lifecycle:
+
+* Pipeline start.
+* Task retry.
+* SLA miss.
+* Pipeline completion, with per-task breakdown.
+
+Failed-task messages include the task name, attempt count, duration, and a direct link to the Airflow logs. The webhook is configured through `SLACK_WEBHOOK_URL`. If absent, the pipeline runs normally and notifications are silently skipped.
 ---
 
 ## Project Structure
