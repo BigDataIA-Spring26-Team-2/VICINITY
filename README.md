@@ -9,7 +9,7 @@ A multi-agent system that helps people find safe, livable apartments in Boston. 
 | Video | https://drive.google.com/file/d/1xDGmqu0cMbNz301FedOs6BJmBzkczSgB/view?usp=sharing |
 | Codelabs | https://codelabs-preview.appspot.com/?file_id=https://docs.google.com/document/d/1RL4SLb7kKuK6XFmw_rsKU6Oitw7c9-MyDHH9g4wFWRI/edit?usp=sharing#1 |
 
-(Note: sign in as neha@vicinity.app password: neha12345 for already viewing bookmarked listigs you will have to create an account to test our live features for write operations)
+(Note: sign in as neha@vicinity.app password: neha12345 for already viewing bookmarked listings you will have to create an account to test our live features for write operations)
 
 **DAMG 7245 — Big Data and Intelligent Analytics**
 
