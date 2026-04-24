@@ -46,15 +46,22 @@ def map_listings(
     max_price: Optional[int] = Query(None, ge=0),
     beds_min: Optional[int] = Query(None, ge=0),
     min_safety_score: Optional[int] = Query(None, ge=0, le=100),
-    limit: int = Query(500, ge=1, le=1000, description="Max pins"),
+    limit: int = Query(5000, ge=1, le=10000, description="Max pins"),
     cursor=Depends(get_cursor),
 ):
     """Lightweight listing data for map pin rendering.
 
     Returns listing_id, lat, lon, price, beds, baths, safety_score,
     livability_score, neighborhood, and primary_photo_url. Optimized
-    for volume — up to 1000 pins per viewport. Use /listings/{id} for
-    full detail on click.
+    for volume — up to 10,000 pins per viewport. Use /listings/{id}
+    for full detail on click.
+
+    Default limit raised to 5,000 (was 500) because the active listings
+    corpus grew to ~4,400 with expanded ZIP coverage. The previous cap
+    was silently dropping most listings, and the safety_score bias
+    hid ones that hadn't been scored yet (new Cambridge/Somerville/
+    Brookline entries). ORDER BY listing_id is neutral — no ranking
+    semantics on the map; users filter through query params instead.
 
     Bounding box parameters are optional. Without them, returns all
     active listings up to the limit.
@@ -85,6 +92,11 @@ def map_listings(
 
     where = " AND ".join(conditions)
 
+    # ORDER BY listing_id keeps the result set stable and neutral.
+    # We no longer sort by safety_score DESC because many newly-added
+    # listings (Cambridge/Somerville/Brookline/outer-Boston ZIPs) don't
+    # have scorecards yet — sorting by score with NULLS LAST pushed
+    # them past any LIMIT cap and they never rendered.
     sql = f"""
         SELECT
             l.listing_id, l.lat, l.lon,
@@ -96,7 +108,7 @@ def map_listings(
         LEFT JOIN SCORECARDS.LISTING_SUMMARY ls
             ON l.listing_id = ls.listing_id
         WHERE {where}
-        ORDER BY ls.safety_score DESC NULLS LAST
+        ORDER BY l.listing_id
         LIMIT %s
     """
     params.append(limit)
@@ -164,13 +176,7 @@ def map_transit(
     limit: int = Query(500, ge=1, le=2000),
     cursor=Depends(get_cursor),
 ):
-    """MBTA transit stops with route names and types.
-
-    Returns stop_id, stop_name, lat, lon, municipality,
-    wheelchair_boarding, route_ids, route_names, route_types.
-    Filter by bounding box for viewport queries or by route_type
-    for layer toggling (subway only, bus only, etc.).
-    """
+    """MBTA transit stops with route names and types."""
     from app.services.listing_queries import _rows_to_dicts
 
     conditions = ["t.lat IS NOT NULL"]
@@ -226,14 +232,7 @@ def map_amenities(
     limit: int = Query(100, ge=1, le=500, description="Max results"),
     cursor=Depends(get_cursor),
 ):
-    """Stored amenities near a point with distance.
-
-    Returns osm_id, name, category, subcategory, lat, lon, address,
-    opening_hours, website, phone, brand, tags, and distance_m.
-    Queries the pre-indexed RAW.AMENITIES table (35 subcategory types).
-    For exotic venue types not in the index, the chat agent uses live
-    Overpass queries instead.
-    """
+    """Stored amenities near a point with distance."""
     from app.services.amenity_lookup import search_stored_amenities
 
     result = search_stored_amenities(
@@ -260,14 +259,7 @@ def map_routes(
     user_id: str = Depends(get_current_user),
     cursor=Depends(get_cursor),
 ):
-    """Configured commute routes with waypoints for polyline rendering.
-
-    Returns route_id, listing_id, dest_label, dest_address, dest_lat,
-    dest_lon, departure_hour, travel_mode, duration_min, distance_text,
-    transit_lines, waypoints (array of {lat, lon}), waypoint_scores
-    (per-waypoint safety scores for gradient coloring), is_active,
-    and computed_at.
-    """
+    """Configured commute routes with waypoints for polyline rendering."""
     from app.services.listing_queries import get_configured_routes
 
     result = get_configured_routes(cursor, user_id, listing_id=listing_id)

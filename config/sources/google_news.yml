@@ -43,6 +43,15 @@ queries:
   gun_violence_roxbury:
     - "crime Roxbury Massachusetts"
 
+
+  # -- Added by Organizer (2026-04-23 07:59 UTC) --
+  party_culture_mit:
+    - "Boston MIT party culture"
+    - "Cambridge nightlife MIT students"
+    - "MIT campus events parties"
+    - "Kendall Square entertainment Boston"
+    - "Central Square bars MIT area"
+
 # Tags in this set scope queries as livability signals.
 # All other tags are treated as lifestyle signals.
 livability_tags:

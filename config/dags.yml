@@ -93,7 +93,7 @@ dags:
     pool: api
     required: false
     description: "Citizen App real-time incidents"
-    schedule: null
+    schedule: "*/30 * * * *"
     retries: 2
     retry_delay_min: 3
     dagrun_timeout_min: 15

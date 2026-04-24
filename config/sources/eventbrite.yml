@@ -29,6 +29,14 @@ queries:
     - "fitness"
     - "health"
 
+
+  # -- Added by Organizer (2026-04-23 07:59 UTC) --
+  party_culture_mit:
+    - "mit-party"
+    - "cambridge-nightlife"
+    - "kendall-square-events"
+    - "college-party-boston"
+
 # Tags treated as livability signals.
 # All other tags are lifestyle. Eventbrite is almost entirely lifestyle.
 livability_tags: []

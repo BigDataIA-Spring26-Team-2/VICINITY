@@ -12,6 +12,7 @@ scoring_radii:
   transit_m: 800
 
 zip_to_neighborhood:
+  # ── Boston ───────────────────────────────────────────────
   "02134": "Allston"
   "02135": "Brighton"
   "02163": "Allston"
@@ -41,3 +42,17 @@ zip_to_neighborhood:
   "02110": "Financial District"
   "02113": "North End"
   "02114": "West End/Beacon Hill"
+  # Cambridge
+  "02138": "Cambridge - Harvard Square"
+  "02139": "Cambridge - Central Square"
+  "02140": "Cambridge - Porter Square"
+  "02141": "Cambridge - East Cambridge"
+  "02142": "Cambridge - Kendall Square"
+  # Somerville
+  "02143": "Somerville - Union Square"
+  "02144": "Somerville - Davis Square"
+  "02145": "Somerville - Winter Hill"
+  # Brookline
+  "02445": "Brookline - Coolidge Corner"
+  "02446": "Brookline - Brookline Village"
+  "02447": "Brookline - Chestnut Hill"

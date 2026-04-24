@@ -96,6 +96,7 @@ class S3Archiver:
 
         cols = [d[0].lower() for d in cursor.description]
 
+        # Build the compressed JSONL in memory
         buf = io.BytesIO()
         with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
             for row in rows:
@@ -114,8 +115,13 @@ class S3Archiver:
                 gz.write(json.dumps(record).encode("utf-8"))
                 gz.write(b"\n")
 
-        buf = io.BytesIO(buf.getvalue())
-
+        # Capture the bytes + size BEFORE upload_fileobj, because that
+        # call closes the BytesIO as soon as it finishes reading,
+        # making any subsequent buf.tell() / buf.getvalue() call raise
+        # "I/O operation on closed file."
+        raw_bytes = buf.getvalue()
+        size_kb = len(raw_bytes) // 1024
+        upload_buf = io.BytesIO(raw_bytes)
 
         now = datetime.now(timezone.utc)
         key = (
@@ -125,11 +131,10 @@ class S3Archiver:
         )
 
         self._client.upload_fileobj(
-            buf, self._bucket, key,
+            upload_buf, self._bucket, key,
             ExtraArgs={"ContentType": "application/gzip"},
         )
 
-        size_kb = buf.tell() // 1024
         logger.info(
             "s3_archive_complete",
             source=source,

@@ -2,7 +2,17 @@
 
 Fetches Boston-area rentals from Realtor.com via HomeHarvest,
 validates, deduplicates, loads to RAW.LISTINGS via staging + MERGE.
-Marks stale listings inactive on full runs.
+
+Deactivation strategy (grace-period, not one-shot):
+    A listing is marked is_current = FALSE only when it has not been
+    seen for `grace_hours` (default 48h). This tolerates HomeHarvest
+    response drift — a listing that's active on Realtor.com but not
+    returned by a single ZIP search won't be killed. It must be absent
+    across multiple runs spanning grace_hours before deactivation.
+
+    Configure via listings.yml:
+        deactivation:
+          grace_hours: 48
 
 Usage:
     python -m app.pipelines.ingest_listings --mode full --limit 50 --dry-run
@@ -126,6 +136,11 @@ class ListingsPipeline(BasePipeline):
         self._source_id_field = self._config["dedup"]["source_id_field"]
         self._spatial = load_spatial()
 
+        # Grace-period deactivation config. Default 48h — a listing must be
+        # absent across runs spanning two days before is_current flips.
+        deact_cfg = self._config.get("deactivation", {})
+        self._grace_hours = deact_cfg.get("grace_hours", 48)
+
     @classmethod
     def add_arguments(cls, parser: argparse.ArgumentParser):
         parser.add_argument(
@@ -162,6 +177,12 @@ class ListingsPipeline(BasePipeline):
             type=int,
             default=None,
             help="Filter: maximum listing price.",
+        )
+        parser.add_argument(
+            "--grace-hours",
+            type=int,
+            default=None,
+            help="Override grace period before a missing listing is deactivated.",
         )
 
     def run_pipeline(self, args: argparse.Namespace) -> PipelineRunResult:
@@ -286,7 +307,8 @@ class ListingsPipeline(BasePipeline):
 
         deactivated = 0
         if not args.skip_deactivation and args.mode == "full" and not args.location:
-            deactivated = self._deactivate_stale()
+            grace = args.grace_hours if args.grace_hours is not None else self._grace_hours
+            deactivated = self._deactivate_stale(grace_hours=grace)
 
         return PipelineRunResult(
             pipeline_run_id=self.pipeline_run_id,
@@ -435,7 +457,16 @@ class ListingsPipeline(BasePipeline):
             self.log.debug("staged_batch", offset=i, size=len(batch))
 
     def _merge(self, stage_table: str) -> int:
-        """Upsert: insert new, update existing with latest data."""
+        """Upsert: insert new, update existing with latest data.
+
+        The UPDATE branch bumps last_seen_at on every re-fetch, which
+        is what _deactivate_stale() reads to decide what's actually gone.
+
+        neighborhood, zip_code, city are included in UPDATE so that
+        changes to spatial.yml (adding new ZIP mappings) propagate on
+        the next pipeline run. Without this, a listing first inserted
+        with neighborhood=NULL would keep NULL forever.
+        """
         self.cursor.execute(f"""
             MERGE INTO RAW.LISTINGS AS target
             USING {stage_table} AS src
@@ -447,6 +478,9 @@ class ListingsPipeline(BasePipeline):
                 sqft = src.sqft,
                 street = src.street,
                 unit = src.unit,
+                city = src.city,
+                zip_code = src.zip_code,
+                neighborhood = src.neighborhood,
                 mls_status = src.mls_status,
                 days_on_mls = src.days_on_mls,
                 agent_name = src.agent_name,
@@ -480,21 +514,36 @@ class ListingsPipeline(BasePipeline):
         self.log.info("merge_complete", loaded=loaded)
         return loaded
 
-    def _deactivate_stale(self) -> int:
-        """Mark listings not seen in this run as inactive."""
+    def _deactivate_stale(self, grace_hours: int = 48) -> int:
+        """Mark listings as inactive only when not seen for grace_hours.
+
+        Uses last_seen_at (bumped by MERGE on every successful re-fetch)
+        instead of pipeline_run_id. This tolerates HomeHarvest response
+        drift — a single run that misses a listing won't kill it. The
+        listing must remain absent across enough runs to span grace_hours
+        before is_current flips to FALSE.
+
+        Default grace_hours = 48 means a listing survives roughly two
+        daily pipeline runs before deactivation, giving Realtor.com's
+        non-deterministic ZIP responses time to re-include it.
+        """
         self.cursor.execute("""
             UPDATE RAW.LISTINGS
             SET is_current = FALSE
             WHERE source = %s
               AND is_current = TRUE
-              AND pipeline_run_id != %s
-        """, (self._source_name, self.pipeline_run_id))
+              AND last_seen_at < DATEADD(hour, -%s, CURRENT_TIMESTAMP())
+        """, (self._source_name, grace_hours))
 
         deactivated = self.cursor.rowcount
         self.conn.commit()
 
         if deactivated > 0:
-            self.log.info("stale_deactivated", count=deactivated)
+            self.log.info(
+                "stale_deactivated",
+                count=deactivated,
+                grace_hours=grace_hours,
+            )
 
         return deactivated
 

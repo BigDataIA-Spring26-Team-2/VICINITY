@@ -4,21 +4,21 @@ target_table: "RAW.CITIZEN_INCIDENTS"
 connection:
   base_url: "https://citizen.com/api/incident/trending"
   detail_url: "https://citizen.com/api/incident"
-  bbox_buffer: 0.02
-  limit: 50
+  bbox_buffer: 0.08       # WAS 0.02 — now ~8.8km radius, covers full Boston metro
+  limit: 200              # WAS 50 — Citizen's API returns up to ~250
   timeout: 30
 
 center:
-  lat: 42.3534
-  lon: -71.1323
+  lat: 42.3601            # WAS 42.3534 — shift to Boston City Hall for centered coverage
+  lon: -71.0589           # WAS -71.1323 — was centered on Fenway, missed East Boston
 
 rate_limit:
-  delay_between_requests: 0.5
+  delay_between_requests: 0.3    # WAS 0.5 — 200 incidents fits well under 15-min cadence
   backoff_base: 2.0
   backoff_max: 30.0
   max_attempts: 3
 
-schedule: "hourly"
+schedule: "hourly"        # keep for documentation; actual schedule lives in dags.yml
 
 classification:
   enabled: true

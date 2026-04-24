@@ -2,7 +2,83 @@ source: "listings"
 target_table: "RAW.LISTINGS"
 
 homeharvest:
+  # Locations ordered by priority:
+  #   1. Boston ZIPs - highest-value, most under-covered
+  #   2. Cambridge/Somerville/Brookline ZIPs
+  #   3. Broad city/neighborhood strings as fallback safety net
+  #
+  # If rate-limiting kicks in late in the run, the broad searches
+  # at the end degrade gracefully. The 48h grace_hours deactivation
+  # means existing listings from those fallback searches survive
+  # across the next 1-2 runs.
   locations:
+    # ---- Phase 1: Boston ZIPs ----
+
+    # Dorchester cluster (currently most under-covered)
+    - "02124"   # Dorchester
+    - "02125"   # Dorchester
+    - "02122"   # Dorchester
+    - "02121"   # Dorchester
+    - "02126"   # Mattapan
+
+    # Southern neighborhoods (near-zero before this fix)
+    - "02130"   # Jamaica Plain
+    - "02131"   # Roslindale
+    - "02132"   # West Roxbury
+    - "02136"   # Hyde Park
+
+    # Mission Hill / Roxbury
+    - "02119"   # Roxbury
+    - "02120"   # Mission Hill
+
+    # Allston / Brighton / Fenway (high student density)
+    - "02134"   # Allston
+    - "02135"   # Brighton
+    - "02163"   # Allston (HBS)
+    - "02215"   # Fenway/Kenmore
+    - "02115"   # Fenway/Longwood
+
+    # East Boston / Charlestown
+    - "02128"   # East Boston
+    - "02129"   # Charlestown
+
+    # Southie / Seaport
+    - "02127"   # South Boston
+    - "02210"   # Seaport
+
+    # Back Bay / South End / Downtown core
+    - "02118"   # South End
+    - "02116"   # Back Bay
+    - "02199"   # Back Bay
+    - "02108"   # Beacon Hill
+    - "02114"   # West End / Beacon Hill
+    - "02111"   # Downtown / Chinatown
+    - "02113"   # North End
+    - "02109"   # Downtown
+    - "02110"   # Financial District
+
+    # ---- Phase 2: Cambridge / Somerville / Brookline ZIPs ----
+
+    # Cambridge (MIT, Harvard, Kendall)
+    - "02138"   # Harvard Square / Mid-Cambridge
+    - "02139"   # Central Sq / MIT / Cambridgeport
+    - "02140"   # North Cambridge / Porter Square
+    - "02141"   # East Cambridge / Kendall
+    - "02142"   # Kendall Square / MIT
+
+    # Somerville (Tufts, cross-MIT, Davis / Union)
+    - "02143"   # Union Square / Inman
+    - "02144"   # Davis Square / West Somerville
+    - "02145"   # Winter Hill / East Somerville
+
+    # Brookline (BU / BC / Longwood spillover)
+    - "02445"   # Coolidge Corner / Longwood area
+    - "02446"   # Brookline Village / Washington Sq
+    - "02447"   # Chestnut Hill
+
+    # ---- Phase 3: Broad city/neighborhood fallback safety net ----
+    # Runs last. If rate-limiting truncates the run here, grace-period
+    # deactivation preserves existing data from previous successful runs.
     - "Boston, MA"
     - "Cambridge, MA"
     - "Somerville, MA"
@@ -13,14 +89,21 @@ homeharvest:
     - "Jamaica Plain, MA"
     - "Dorchester, MA"
     - "South Boston, MA"
+
   listing_type: "for_rent"
-  past_days: 7
-  delay_between_calls: 4.0
+  past_days: 30
+  delay_between_calls: 3.0
   max_retries: 3
 
 dedup:
   source_id_field: "property_id"
   source_name: "realtor_com"
+
+# Grace-period deactivation - tolerates HomeHarvest response drift and
+# mid-run rate-limiting. A listing must be absent for grace_hours across
+# multiple runs before is_current flips to FALSE.
+deactivation:
+  grace_hours: 48
 
 classification:
   enabled: false

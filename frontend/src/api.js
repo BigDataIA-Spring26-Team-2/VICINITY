@@ -1,117 +1,55 @@
 const API = import.meta.env.VITE_API_URL || ''
 
-function getToken() {
+function tok() {
   return localStorage.getItem('vicinity_token')
 }
 
-async function request(path, options = {}) {
-  const token = getToken()
+async function req(path, options = {}) {
+  const token = tok()
   const headers = {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...options.headers,
+    ...(options.headers || {}),
   }
-
   const res = await fetch(`${API}${path}`, { ...options, headers })
-  const data = await res.json()
-
+  const text = await res.text()
+  let data
+  try { data = text ? JSON.parse(text) : {} } catch { data = { _raw: text } }
   if (!res.ok) {
-    throw new Error(data.detail || data.error || `HTTP ${res.status}`)
+    const msg = data?.detail || data?.error || `HTTP ${res.status}`
+    const e = new Error(msg)
+    e.status = res.status
+    e.body = data
+    throw e
   }
-
   return data
 }
 
-// ─── Listings ────────────────────────────────────────────────
+const qs = (params) => new URLSearchParams(
+  Object.fromEntries(Object.entries(params).filter(([, v]) => v !== null && v !== undefined && v !== ''))
+).toString()
 
-export async function searchListings(params = {}) {
-  const qs = new URLSearchParams(
-    Object.fromEntries(Object.entries(params).filter(([, v]) => v != null))
-  ).toString()
-  return request(`/listings/search?${qs}`)
-}
+// Listings
+export const searchListings        = (p = {})       => req(`/listings/search?${qs(p)}`)
+export const getListingDetail      = (id)           => req(`/listings/${id}`)
+export const getListingNarratives  = (id, p = {})   => req(`/listings/${id}/narratives?${qs(p)}`)
+export const compareListings       = (ids)          => req(`/listings/compare?${ids.map(i => `ids=${i}`).join('&')}`)
+export const getScorecard          = (id, p = {})   => req(`/listings/${id}/scorecard?${qs(p)}`)
 
-export async function getListingDetail(listingId) {
-  return request(`/listings/${listingId}`)
-}
+// Safety
+export const getCrimes             = (lat, lon, p = {}) => req(`/safety/crimes?${qs({ lat, lon, ...p })}`)
+export const getCrimesHeatmap      = (p = {})           => req(`/safety/crimes/heatmap?${qs(p)}`)
+export const getCrimesDistribution = (lat, lon, p = {}) => req(`/safety/crimes/distribution?${qs({ lat, lon, ...p })}`)
+export const getCrimesTypes        = (lat, lon, p = {}) => req(`/safety/crimes/types?${qs({ lat, lon, ...p })}`)
+export const getCrimesHourly       = (lat, lon, p = {}) => req(`/safety/crimes/hourly?${qs({ lat, lon, ...p })}`)
+export const getComplaints         = (lat, lon, p = {}) => req(`/safety/complaints?${qs({ lat, lon, ...p })}`)
+export const getComplaintsSummary  = (lat, lon, p = {}) => req(`/safety/complaints/summary?${qs({ lat, lon, ...p })}`)
 
-export async function compareListings(ids) {
-  const qs = ids.map(id => `ids=${id}`).join('&')
-  return request(`/listings/compare?${qs}`)
-}
+// Map
+export const getMapListings        = (p = {})           => req(`/map/listings?${qs(p)}`)
+export const getMapTransit         = (p = {})           => req(`/map/transit?${qs(p)}`)
+export const getMapAmenities       = (lat, lon, p = {}) => req(`/map/amenities?${qs({ lat, lon, ...p })}`)
 
-export async function getScorecard(listingId, params = {}) {
-  const qs = new URLSearchParams(params).toString()
-  return request(`/listings/${listingId}/scorecard?${qs}`)
-}
-
-// ─── Safety ──────────────────────────────────────────────────
-
-export async function getCrimes(lat, lon, params = {}) {
-  const qs = new URLSearchParams({ lat, lon, ...params }).toString()
-  return request(`/safety/crimes?${qs}`)
-}
-
-export async function getCrimesHourly(lat, lon, params = {}) {
-  const qs = new URLSearchParams({ lat, lon, ...params }).toString()
-  return request(`/safety/crimes/hourly?${qs}`)
-}
-
-export async function getNeighborhoodStats(neighborhood, params = {}) {
-  const qs = new URLSearchParams({ neighborhood, ...params }).toString()
-  return request(`/safety/neighborhood?${qs}`)
-}
-
-export async function getComplaints(lat, lon, params = {}) {
-  const qs = new URLSearchParams({ lat, lon, ...params }).toString()
-  return request(`/safety/complaints?${qs}`)
-}
-
-export async function getComplaintsSummary(lat, lon, params = {}) {
-  const qs = new URLSearchParams({ lat, lon, ...params }).toString()
-  return request(`/safety/complaints/summary?${qs}`)
-}
-
-// ─── Map data ────────────────────────────────────────────────
-
-export async function getMapListings(params = {}) {
-  const qs = new URLSearchParams(params).toString()
-  return request(`/map/listings?${qs}`)
-}
-
-export async function getMapTransit(params = {}) {
-  const qs = new URLSearchParams(params).toString()
-  return request(`/map/transit?${qs}`)
-}
-
-export async function getMapAmenities(lat, lon, params = {}) {
-  const qs = new URLSearchParams({ lat, lon, ...params }).toString()
-  return request(`/map/amenities?${qs}`)
-}
-
-export async function getMapRoutes(params = {}) {
-  const qs = new URLSearchParams(params).toString()
-  return request(`/map/routes?${qs}`)
-}
-
-// ─── Scorecards ──────────────────────────────────────────────
-
-export async function getRouteScorecard(routeId, params = {}) {
-  const qs = new URLSearchParams(params).toString()
-  return request(`/scorecards/route/${routeId}?${qs}`)
-}
-
-// ─── Users ───────────────────────────────────────────────────
-
-export async function getUserProfile() {
-  return request('/users/profile')
-}
-
-export async function getUserBookmarks() {
-  return request('/users/bookmarks')
-}
-
-export async function getUserRoutes(params = {}) {
-  const qs = new URLSearchParams(params).toString()
-  return request(`/users/routes?${qs}`)
-}
+// User
+export const getUserBookmarks      = ()         => req('/users/bookmarks')
+export const getUserRoutes         = (p = {})   => req(`/users/routes?${qs(p)}`)
