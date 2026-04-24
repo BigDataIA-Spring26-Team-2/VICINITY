@@ -18,11 +18,20 @@ Three-way confirmation:
               routes BACK to organizer_plan so the LLM re-plans with the
               modification. No wasted LLM calls on the confirm node.
 
+Bounce mechanism (added):
+  If the input_gate misroutes a read/explanation to organizer (e.g.
+  "why would I bookmark this?" classified as organizer because
+  "bookmark" appeared), the LLM emits "BOUNCE: <reason>" per its
+  system prompt instructions. organizer_plan detects this and sets
+  sub_agent_result.status="bounce" so the graph reroutes to input_gate
+  for reclassification. Consistent with search/report bounce pattern.
+
 Graph wiring:
   input_gate -> (route=organizer) -> organizer_plan
-    -> (pending_confirmation set) -> organizer_confirm -> interrupt() -> PAUSE
-    -> (manage_conversations / update_pipeline_queries) -> org_tools -> chat_react
-    -> (no tools) -> chat_react
+    -> (status=bounce)             -> record_bounce -> input_gate
+    -> (pending_confirmation set)  -> organizer_confirm -> interrupt() -> PAUSE
+    -> (no-confirm tool_calls)     -> org_tools -> chat_react
+    -> (no tools)                  -> chat_react
 
   Command(resume=...) -> organizer_confirm resumes
     -> (approved)  -> org_tools -> chat_react -> guardrail -> END
@@ -77,6 +86,11 @@ def _build_context(state: AgentState) -> str:
         parts.append(f"Budget: ${uc.get('budget_min', '?')}-${uc.get('budget_max', '?')}")
     if uc.get("active_bookmarks"):
         parts.append(f"Active bookmarks: {len(uc['active_bookmarks'])}")
+
+    gr = state.get("gate_reasoning")
+    if gr:
+        parts.append(f"\nGate reasoning (why you were invoked): {gr}")
+
     return "\n".join(parts) if parts else ""
 
 
@@ -90,6 +104,21 @@ def _is_no_confirm_tool(tool_calls: list[dict]) -> bool:
     return bool(tool_calls) and all(
         tc.get("name") in no_confirm for tc in tool_calls
     )
+
+
+def _is_bounce_response(content: str) -> tuple[bool, str]:
+    """True if the LLM output begins with 'BOUNCE:' (per system prompt).
+
+    Same pattern as search_supervisor and report_generator for
+    consistency across all three sub-agents.
+    """
+    if not isinstance(content, str):
+        return False, ""
+    stripped = content.lstrip()
+    if stripped.upper().startswith("BOUNCE:"):
+        reason = stripped[7:].strip()
+        return True, reason
+    return False, ""
 
 
 def _build_summary(tool_name: str, args: dict) -> str:
@@ -134,14 +163,15 @@ def _build_summary(tool_name: str, args: dict) -> str:
 async def organizer_plan(state: AgentState) -> dict[str, Any]:
     """LLM decides the write operation. No interrupt here.
 
-    Five outcomes:
+    Six outcomes:
       0. No user_id -> authentication required, return signup prompt.
-      1. No tool calls -> LLM wants clarification, return message.
-      2. No-confirm tools (manage_conversations, update_pipeline_queries)
+      1. LLM returns BOUNCE: -> misrouted here, bounce to input_gate.
+      2. No tool calls -> LLM wants clarification, return message.
+      3. No-confirm tools (manage_conversations, update_pipeline_queries)
          -> execute immediately (return with tool_calls).
-      3. Any other write tool -> build ConfirmationPayload, write to state,
+      4. Any other write tool -> build ConfirmationPayload, write to state,
          return user-facing preview message WITHOUT tool_calls.
-      4. Re-plan after modification -> same as above but with user's
+      5. Re-plan after modification -> same as above but with user's
          modification already in the message history.
     """
     log = logger.bind(trace_id=state.get("trace_id"), node="organizer_plan")
@@ -152,9 +182,7 @@ async def organizer_plan(state: AgentState) -> dict[str, Any]:
         log.info("blocked_unauthenticated_write")
         return {
             "messages": [AIMessage(content=(
-                "I'd need you to sign in before I can save anything for you. "
-                "Once you're logged in, I can manage your profile, bookmark "
-                "listings, configure commute routes, and more."
+                "Sign in at the top right and I can save that for you."
             ))],
             "sub_agent_result": {
                 "status": "auth_required",
@@ -175,7 +203,23 @@ async def organizer_plan(state: AgentState) -> dict[str, Any]:
     llm = create_llm(tools=ORGANIZER_TOOLS)
     response = await llm.ainvoke(messages)
 
-    # Outcome 1: no tool calls (clarification)
+    # -- Outcome 1: bounce (misrouted read / explanation) --
+    # Check BEFORE tool_calls so the LLM can cleanly bounce even if
+    # it accidentally generates tool_calls alongside BOUNCE text.
+    if not response.tool_calls:
+        is_bounce, bounce_reason = _is_bounce_response(response.content)
+        if is_bounce:
+            log.info("organizer_bounced", reason=bounce_reason[:200])
+            return {
+                "sub_agent_result": {
+                    "status": "bounce",
+                    "agent": "organizer",
+                    "reason": bounce_reason,
+                    "content": "",
+                },
+            }
+
+    # Outcome 2: no tool calls (clarification)
     if not response.tool_calls:
         log.info("plan_no_tools")
         return {
@@ -183,12 +227,12 @@ async def organizer_plan(state: AgentState) -> dict[str, Any]:
             "sub_agent_result": {"status": "no_action", "message": response.content},
         }
 
-    # Outcome 2: no-confirm tools bypass confirmation
+    # Outcome 3: no-confirm tools bypass confirmation
     if _is_no_confirm_tool(response.tool_calls):
         log.info("plan_no_confirm_bypass", calls=len(response.tool_calls))
         return {"messages": [response]}
 
-    # Outcome 3: write tool -- build confirmation, commit to state
+    # Outcome 4: write tool -- build confirmation, commit to state
     tc = response.tool_calls[0]
     payload: ConfirmationPayload = {
         "tool": tc["name"],
@@ -229,7 +273,6 @@ async def organizer_confirm(state: AgentState) -> dict[str, Any]:
 
     user_response = interrupt(pending)
 
-    # -- Resumed --
     decision = _parse_response(user_response)
 
     if decision == "approve":
@@ -249,15 +292,9 @@ async def organizer_confirm(state: AgentState) -> dict[str, Any]:
         }
 
     # decision == "modify"
-    # Inject synthetic ToolMessages for the original (now-cancelled) tool_calls
-    # to prevent the "tool_calls without ToolMessage" LLM API error.
-    from langchain_core.messages import ToolMessage
-
     cancelled_tool_msgs = []
     original_tc = pending.get("tool_calls", [])
     if original_tc:
-        # First, re-add the original AIMessage with tool_calls so the
-        # ToolMessages have something to reference
         original_ai = AIMessage(content="", tool_calls=original_tc)
         cancelled_tool_msgs.append(original_ai)
         for tc in original_tc:
@@ -302,7 +339,6 @@ def _parse_response(response: Any) -> str:
     if isinstance(response, str):
         lower = response.strip().lower()
 
-        # Explicit approval
         if lower in (
             "yes", "y", "confirm", "go ahead", "approved",
             "ok", "sure", "do it", "proceed", "yep", "yeah",
@@ -310,7 +346,6 @@ def _parse_response(response: Any) -> str:
         ):
             return "approve"
 
-        # Explicit rejection (including empty input)
         if not lower or lower in (
             "no", "n", "cancel", "nevermind", "never mind",
             "stop", "abort", "don't", "nope", "nah",
@@ -318,7 +353,6 @@ def _parse_response(response: Any) -> str:
         ):
             return "reject"
 
-        # Anything else is a modification request
         return "modify"
 
     return "reject"
