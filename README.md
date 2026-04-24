@@ -1,6 +1,6 @@
 # Vicinity — Boston Housing Intelligence
 
-A multi-agent system that helps people find safe, livable apartments in Boston by combining twelve public data sources — crime records, 311 complaints, Citizen incidents, MBTA transit, OSM amenities, Reddit discussions, Google News, and more — into scored, personalized, temporally-tracked recommendations.
+A multi-agent system that helps people find safe, livable apartments in Boston. It pulls twelve public data sources into a single intelligence layer, scores every active listing across safety, livability, and transit, monitors bookmarks over a watch period, and answers natural-language questions with evidence drawn from both structured records and narrative sources like Reddit and local news.
 
 | Resource | Link |
 |---|---|
@@ -20,83 +20,102 @@ A multi-agent system that helps people find safe, livable apartments in Boston b
 
 **Attestation:** WE ATTEST THAT WE HAVEN'T USED ANY OTHER STUDENTS' WORK IN OUR ASSIGNMENT AND ABIDE BY THE POLICIES LISTED IN THE STUDENT HANDBOOK.
 
-**AI usage:** Claude Opus 4.6 alongside GitHub Copilot — used for agent graph design, prompt engineering, pipeline orchestration patterns, test scaffolding, and documentation.
+**AI usage:** Claude Opus 4.6 alongside GitHub Copilot. Used for agent graph design, prompt engineering, pipeline orchestration patterns, test scaffolding, and documentation.
 
 ---
 
 ## What it does
 
-Vicinity answers *where should I live in Boston* with accumulated evidence, not a single snapshot.
+Vicinity answers the question "where should I live in Boston" with evidence accumulated over time rather than a single snapshot. A user enters their budget, preferred neighborhoods, and lifestyle priorities. Vicinity returns matching listings ranked by pre-computed scores, lets them bookmark candidates, and runs a monitoring pipeline over the following days or weeks. When the watch period ends, a comparison report weighs the accumulated evidence and picks a winner with justification.
 
-- **Search** — finds apartments matching budget, bedrooms, neighborhood, and lifestyle preferences; ranks by pre-computed safety, livability, and transit scores.
-- **Monitor** — bookmark up to 20 listings with a configurable watch period (up to 30 days); nightly Airflow DAGs accumulate daily scorecards per listing.
-- **Ask** — natural-language questions answered via dual retrieval: SQL against Snowflake for structured data (crime counts, trends, amenities), semantic search against Pinecone for narrative evidence (Reddit discussions, news coverage, incident descriptions).
-- **Compare** — when the watch period ends, a report synthesizes the accumulated evidence across bookmarks, weighs tradeoffs, and picks a winner with justification.
-- **Configure** — save profile, add commute routes scored for safety along the actual path at the hours traveled, flag broken URLs, trigger tracking for new topics.
+The system understands four broad kinds of requests:
+
+1. **Search.** Find apartments matching budget, bedrooms, neighborhood, and lifestyle preferences, ranked by safety, livability, and transit scores.
+2. **Ask.** Answer questions about a neighborhood, listing, or trend using structured data (crime counts, complaint density, amenity coverage) alongside narrative evidence from Reddit, Google News, and Citizen.
+3. **Save.** Create or update a profile, bookmark listings, add commute routes, or trigger monitoring for a new topic. Every write requires explicit confirmation.
+4. **Compare.** At the end of a watch period, generate a side-by-side report across bookmarked listings with cited evidence and a recommendation.
 
 ---
 
 ## System Architecture
 
-![Infrastructure](./images/arch.png)
+![Infrastructure](./images/archd.png)
 
-Single-VM deployment on **GCP Compute Engine** running four containers:
+Vicinity runs on a single **GCP Compute Engine** VM with four long-running containers.
 
-- **FastAPI + MCP server** — REST API on port 8000, MCP streamable-HTTP on port 8001, serves the agent graph and listing routers.
-- **React frontend** — port 80, served by nginx, consumes the SSE event stream from the chat API.
-- **Redis** — cache layer for geocoding, Overpass amenity lookups, commute route computations.
-- **Airflow** — nightly master DAG orchestrating 10 ingestion pipelines, embedding sync, and scorecard scoring.
+**Application layer**
 
-**Data plane:** Snowflake for structured records (listings, crime, 311, scorecards, user data), Pinecone for narrative vectors with HyDE-enhanced retrieval, AWS S3 for raw API backup.
+* **FastAPI server.** REST API used by the React frontend, handles the agent graph's conversational endpoints.
+* **MCP server.** Exposes the same agent tools through the Model Context Protocol. Runs in streamable-HTTP mode on port 8001 for clients that support HTTP-based MCP configs (Cursor and similar). Claude Desktop does not currently support remote HTTP MCP servers, so to connect it the MCP server is run locally over stdio instead. Both transports expose the exact same tool set; only the transport layer differs.
+* **React frontend.** Served by nginx on port 80. Consumes the streaming chat API, renders listing cards, the comparison report, and the map.
+* **Redis.** Caches geocoding results, Overpass amenity lookups, and commute route computations, all of which have stable answers that would otherwise cost an external API call per query.
+* **Airflow.** Orchestrates the nightly ingestion and scoring pipelines.
+
+**Data plane**
+
+* **Snowflake.** Holds all structured records: listings, crime, 311 complaints, user bookmarks, daily scorecards.
+* **Pinecone.** Stores narrative embeddings (Reddit posts, news headlines, incident descriptions, Citizen reports) and serves them back through semantic search.
+* **AWS S3.** Keeps raw API responses so that any future change to classification logic can replay the original inputs without re-fetching from upstream sources.
 
 ---
 
 ## Agent Architecture
 
-Built on **LangGraph StateGraph** with MemorySaver checkpointer. Every user turn enters through the input gate, routes to one of five paths, and exits through a guardrail.
+The conversational layer is a multi-agent system built on **LangGraph**. Every user message flows through the same path: a router classifies the intent, one or more specialized agents do the work, and a guardrail checks the response before it leaves the system. State persists across turns through a checkpointer, which means flows that span multiple messages (like asking for confirmation before a write) survive across turns without the user losing their place.
 
 ### High-level flow
 
 ![Agent Flow](./images/agent_diagram.png)
 
-An **intent router** classifies the user's message into one of five routes. Read-only questions go straight to the **Chat Agent**. Search and report requests run through specialized sub-agents whose output flows back through the chat agent for synthesis. Write operations go through the **Organizer**, which always asks before committing. The **Safety Check** scrubs PII, truncates long responses, and retries on empty output before the response leaves the system.
+When a message arrives, an **Intent Router** reads the current message along with a short window of recent conversation and decides where to send it. There are five destinations.
 
-*Why this shape:* one classifier, one exit guardrail, and specialized agents in between. Failures are bounded to a single node; state corruption is impossible because every state field has a single writer per path.
+The **Chat Agent** handles open-ended questions, anything from "tell me about Allston" to "what's the crime situation near this listing at night." It answers using a mix of structured SQL queries against Snowflake and semantic search against Pinecone for narrative evidence. This dual approach lets the same agent respond to "how many violent crimes happened near listing A this week" with exact numbers and to "what do people say about walking home late in Allston" with real quotes from real sources.
+
+The **Search Agent** finds apartments. It filters the MLS catalog by budget, bedrooms, and neighborhood, ranks candidates by the pre-computed safety, livability, and transit percentiles, and returns polished listing cards. It runs only when the user explicitly asks for apartments; it does not fire on every message.
+
+The **Report Agent** compares bookmarked listings at the end of a watch period. It pulls every daily scorecard from Snowflake, retrieves supporting narrative evidence from Pinecone, weighs the tradeoffs, and writes a recommendation with citations. This agent runs only when the user has at least two bookmarks.
+
+The **Organizer Agent** is the only path that can write to the database. Saving a profile, bookmarking a listing, adding a commute route, or asking the pipeline to start monitoring a new topic all go through the Organizer. Before any write commits, the graph pauses and asks the user to approve, reject, or modify the proposed action. Anonymous users who try to save something are politely asked to sign in. Reads and search are fully available without an account.
+
+The **Polite Refusal** path handles messages outside Vicinity's scope. Vicinity is a Boston housing assistant; questions about the weather in Paris are redirected back to the domain.
+
+Regardless of which path runs, the final response passes through a **Safety Check** that scrubs personally identifiable information, truncates responses that exceed the length budget, and retries the agent with a nudge if the output came back empty. This is the single exit point of the system, which means every response gets the same safety envelope no matter which agent produced it.
 
 ### Detailed graph
 
 ![LangGraph Topology](./images/langraph.png)
 
-Every node corresponds to an `add_node` call in `app/agents/graph.py`; every edge corresponds to an `add_edge` or `add_conditional_edges` branch.
+The detailed diagram shows the exact node topology from `app/agents/graph.py`. Every box corresponds to a node; every arrow corresponds to an edge. Yellow nodes are agents that call an LLM. Faint yellow nodes are tool executors that run one or more tools and return results to their agent. Blue nodes are control-plane machinery. Red nodes handle writes and human approval.
 
-**Core design decisions:**
+A few design decisions are worth explaining because they show up across the graph.
 
-- **Input gate classifies every turn.** Uses a structured-JSON prompt with six valid routes (`chat`, `search`, `report`, `organizer`, `confirm`, `block`). Sees the last three exchanges as disambiguation context; scrubs PII before the LLM ever sees user input.
-- **ReAct loops are tool-bounded.** Every agent runs a LLM ↔ tools loop with a hard cap (`max_calls_per_turn: 15`). When the limit hits, orphan `tool_calls` are stripped by `sanitize_messages` on the next LLM input — no separate patching step needed.
-- **Sub-agents funnel through chat_react for synthesis.** Accepted trade-off: a single place owns user-facing formatting, at the cost of prompt discipline on the chat agent. The alternative (each sub-agent emits final text) was implemented earlier and reverted after it introduced HumanMessage echo bugs.
-- **HITL writes are split into plan + confirm.** `organizer_plan` proposes the write and sets `pending_confirmation`; `organizer_confirm` calls `interrupt()` and pauses. On resume: *approve* → execute, *reject* → acknowledge, *modify* → re-plan with the user's instruction. Never executes without explicit consent.
-- **Guardrail is the single exit.** Runs PII scrub → tool-health check → empty-retry (up to 2 attempts) → length truncation. Consistent safety envelope regardless of which agent produced the response.
+**The input gate classifies every turn.** Rather than letting each agent decide whether a message is meant for it, a single classifier sees the current message plus the last three exchanges and emits a structured JSON route. This means routing logic lives in one place, behaves consistently, and can be tested in isolation. The gate also scrubs PII from user input before the classification LLM ever sees it, so sensitive information never enters the prompt.
+
+**Each agent runs a bounded ReAct loop.** An agent calls an LLM, which may request one or more tool calls. The graph runs the tools, feeds the results back to the LLM, and loops. This continues until the LLM produces a final answer or a hard cap of 15 tool calls is hit. The cap prevents runaway loops from a confused model and keeps cost per turn bounded.
+
+**Message sanitization sits at every agent's entry.** Conversations accumulate a history of messages, including tool calls and their results. Sometimes a run gets cut short (a tool-call limit fires, a crash happens mid-turn, a human rejects a write) and the history ends up with a "tool call" that has no matching "tool result." Most LLM APIs reject this inconsistent shape and throw an error. The `sanitize_messages` helper walks the message history before it reaches any LLM and strips any orphaned tool calls, so the graph recovers gracefully from partial failures. A user never sees a crash caused by state left over from a previous turn.
+
+**Sub-agents hand off to the chat agent for final synthesis.** Search and Report produce structured results like listing cards, comparison tables, and recommendations. The chat agent is responsible for turning those structured results into a natural response, adding a short introduction, and suggesting a reasonable next step. This keeps the user-facing voice consistent regardless of which sub-agent ran.
+
+**Writes are split into plan and confirm.** The Organizer first decides what it wants to do and describes it to the user, then pauses the graph and waits. When the user approves, the same write plan executes. When the user rejects, nothing happens. When the user modifies the request ("change the watch window from 7 days to 14"), the Organizer re-plans with the new instruction. The write tool only ever fires after explicit approval.
+
+**The guardrail is the single exit.** Every response passes through the same four-step check: PII scrubbing, tool-health verification (if every tool call failed, the agent falls back to an honest "I couldn't retrieve that" message rather than hallucinating), empty-response retry with a nudge prompt, and length truncation. Having one exit means the safety contract is the same for every path the graph can take.
 
 ---
 
 ## Data Pipeline
 
-Airflow master DAG (`dags/vicinity_master.py`) orchestrates 3 phases, scheduled daily at **06:00 UTC**, with `catchup=False`:
+Airflow's master DAG runs nightly at 06:00 UTC with `catchup=False`, so the scheduler never tries to backfill missed runs. The DAG has three phases.
 
-1. **Ingest (10 tasks, parallel)** — crime, 311, Citizen, MLS listings (+ Craigslist fallback), Reddit (livability + lifestyle), Google News (livability + lifestyle), Eventbrite. Each pipeline is idempotent via content-hash dedup.
-2. **Sync** — embed new lifestyle signals into Pinecone (short-circuits if nothing new).
-3. **Score** — compute per-listing percentile scores across safety, livability, transit; write daily scorecards to `SCORECARDS.LOCATION_SCORECARD` and update `SCORECARDS.LISTING_SUMMARY`.
+**Phase one runs ten ingestion pipelines in parallel.** Crime incidents and 311 complaints come from Boston's CKAN data portal. Citizen pulls real-time incident reports. MLS listings come through HomeHarvest with a Craigslist fallback for non-MLS listings like owner-listed sublets. Reddit and Google News feed the lifestyle signal store with one pipeline each for livability topics (safety, noise, transit) and preference topics (food, gyms, nightlife). Eventbrite rounds out the set. Every pipeline is idempotent: records are deduplicated by content hash before insert, so a pipeline that crashes halfway can be re-run without creating duplicates.
 
-**Gate after phase 1:** requires ≥5 successful tasks AND `ingest_listings` must succeed (listings are load-bearing). On failure, phase 2 and 3 don't run.
+A **gate between phases one and two** requires at least five pipelines to have succeeded AND the listings pipeline specifically to have completed. Listings are load-bearing: without fresh listings, scoring has nothing to score. If the gate fails, phases two and three do not run and Slack gets an alert with links to the failed task logs.
 
-**Scoring methodology:**
-- Percentile ranking across all active listings — lower-is-better for crime and complaints, higher-is-better for amenities and transit.
-- Two-tier spatial join: exact `ST_DISTANCE` where coordinates exist, neighborhood/zip fallback otherwise.
-- Weighted complaint score: quality-of-life complaints (noise, pest, heat, housing) × 1.0 + infrastructure complaints × 0.3.
-- Confidence values based on data density — low confidence flags a possible coverage gap, not necessarily bad conditions.
-- Full provenance: every scorecard row stores the exact config (radii, windows, weights) used to compute it.
+**Phase two syncs new narrative embeddings to Pinecone.** Only signals that changed or are newly classified get embedded, so this phase short-circuits cleanly on quiet days.
 
-**Slack notifications** fire on pipeline start, retry, SLA miss, and completion. Failed-task summary includes direct links to logs. Configured via `SLACK_WEBHOOK_URL` in `.env`; gracefully no-ops if absent.
+**Phase three computes daily scorecards.** For every active listing, the scorer queries crime incidents, 311 complaints, amenities, and transit stops within configurable radii. It ranks listings by percentile across each dimension and writes one row per listing per day to `LOCATION_SCORECARD`, along with a denormalized snapshot in `LISTING_SUMMARY` that the search API reads. Every row carries a confidence value, a year-over-year change where data allows, and a `scoring_metadata` blob with full provenance including the exact radii, windows, and weights used to compute the score. A listing with a low safety score and low confidence might just be in a neighborhood with sparse data, and the metadata makes that distinction explicit rather than hiding it.
+
+**Slack notifications** fire when the pipeline starts, when a task retries, when an SLA is missed, and when the run completes. Failed-task messages include the task name, number of attempts, duration, and a direct link to the Airflow logs. The Slack webhook is configured through the `SLACK_WEBHOOK_URL` environment variable. If it is absent, the pipeline runs normally and notifications are silently skipped.
 
 ---
 
@@ -105,118 +124,118 @@ Airflow master DAG (`dags/vicinity_master.py`) orchestrates 3 phases, scheduled 
 ```
 vicinity/
 ├── app/
-│   ├── agents/              # LangGraph: chat, search, report, organizer, guardrails
-│   │   ├── graph.py         # StateGraph assembly — single source of truth for topology
-│   │   ├── tools/           # read_tools, search_tools, write_tools
+│   ├── agents/              LangGraph: chat, search, report, organizer, guardrails
+│   │   ├── graph.py         StateGraph assembly, single source of truth for topology
+│   │   ├── tools/           read_tools, search_tools, write_tools
 │   │   └── ...
-│   ├── pipelines/           # Ingestion pipelines (crime, 311, listings, reddit, news, ...)
-│   ├── scoring/             # Percentile ranking, confidence, YoY, route corridor scoring
-│   ├── routers/             # FastAPI: chat, listings, users, health
-│   ├── services/            # Snowflake query services, user data, URL health
-│   └── core/                # Cache, config loader, base pipeline, auth
-├── mcp_vicinity/            # MCP server (streamable-HTTP transport)
+│   ├── pipelines/           Ingestion pipelines (crime, 311, listings, reddit, news, ...)
+│   ├── scoring/             Percentile ranking, confidence, YoY, route corridor scoring
+│   ├── routers/             FastAPI: chat, listings, users, health
+│   ├── services/            Snowflake query services, user data, URL health
+│   └── core/                Cache, config loader, base pipeline, auth
+├── mcp_vicinity/            MCP server (streamable-HTTP transport)
 ├── airflow/
-│   ├── dags/                # vicinity_master + per-pipeline configs
-│   └── dag_utils.py         # Slack hooks, shared callbacks
-├── config/                  # agents.yml, scoring.yml, dags.yml, sources/
-├── docker/                  # Dockerfile.api, Dockerfile.frontend, docker-compose.yml
-├── frontend/                # React app
-├── alembic/                 # Snowflake schema migrations
-├── scripts/                 # chat.py (terminal interface), utilities
+│   ├── dags/                vicinity_master + per-pipeline configs
+│   └── dag_utils.py         Slack hooks, shared callbacks
+├── config/                  agents.yml, scoring.yml, dags.yml, sources/
+├── docker/                  Dockerfile.api, Dockerfile.frontend, docker-compose.yml
+├── frontend/                React app
+├── alembic/                 Snowflake schema migrations
+├── infra/                   Terraform, Snowflake database, schemas, roles, grants
+├── scripts/                 chat.py (terminal interface), utilities
 ├── tests/
-│   ├── unit/                # agents, routers, scoring (Hypothesis properties)
-│   └── integration/         # graph routing, HITL, sub-agent synthesis, sanitization
-├── images/                  # Architecture diagrams
-├── Makefile                 # Build, test, deploy — one source of truth
-├── requirements.txt         # Full deps (pipelines + app)
-├── requirements-api.txt     # Trimmed API-only deps
+│   ├── unit/                agents, routers, scoring (Hypothesis properties)
+│   └── integration/         graph routing, HITL, sub-agent synthesis, sanitization
+├── images/                  Architecture diagrams
+├── Makefile                 Build, test, deploy
+├── requirements.txt         Full deps (pipelines + app)
+├── requirements-api.txt     Trimmed API-only deps
 ├── .env.example
-└── deploy.env.example       # GCP project, region, instance, zone
+└── deploy.env.example       GCP project, region, instance, zone
 ```
 
 ---
 
-## Setup & Deployment
+## Setup and Deployment
 
-Python 3.12 required. GCP project with Compute Engine, Artifact Registry, and gcloud CLI configured.
+Python 3.12 is required. Deployment uses Google Cloud Platform with Compute Engine and Artifact Registry. You will need the `gcloud` CLI authenticated to your project.
 
-### 1. Clone and configure
+### Configuration
+
+Clone the repository and prepare the two environment files:
 
 ```bash
 git clone https://github.com/<org>/vicinity.git
 cd vicinity
-cp .env.example .env              # fill in Snowflake, API keys, Pinecone, etc.
-cp deploy.env.example deploy.env  # fill in GCP project, region, instance
+cp .env.example .env
+cp deploy.env.example deploy.env
 ```
 
-See `.env.example` for the full variable list. Required: Snowflake credentials, `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `PINECONE_API_KEY`, `GOOGLE_MAPS_API`, `JWT_SECRET`. Optional: `SLACK_WEBHOOK_URL`, `AWS_*` for raw-response backup.
+Fill in `.env` with Snowflake credentials, `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `PINECONE_API_KEY`, `GOOGLE_MAPS_API`, and `JWT_SECRET`. `SLACK_WEBHOOK_URL` and the AWS keys are optional. The `deploy.env` file holds GCP project, region, and instance details used by the Makefile.
 
-### 2. Local development
+### Local development
 
 ```bash
-make up        # Redis + API + Frontend + MCP via docker-compose
+make up        # Redis, API, Frontend, MCP via docker-compose
 make health    # verify all four services are up
 make logs      # tail logs
-make down      # stop
+make down      # stop the stack
 ```
 
-Local endpoints: Frontend `:3000`, API `:8000/docs`, MCP `:8001/mcp`, Redis `:6379`.
+Local endpoints land at Frontend `:3000`, API `:8000/docs`, MCP `:8001/mcp`, Redis `:6379`.
 
-### 3. Test
+### Test
 
 ```bash
-make test      # unit tests (pytest)
-make lint      # ruff check --fix
-make ci        # lint → test → build (all images)
+make test      # unit tests
+make lint      # ruff, with auto-fix
+make ci        # lint, test, then build all images
 ```
 
-Test layout:
-- **Unit** (`tests/unit/`) — routers, services, agents; property-based tests for the scoring module (Hypothesis).
-- **Integration** (`tests/integration/`) — live graph routing, HITL approve/reject/modify, sub-agent→chat synthesis, message sanitization against poisoned state. Write tools are sentinel-intercepted so no row ever reaches Snowflake during tests.
+Unit tests cover routers, services, agents, and the scoring module, which uses Hypothesis for property-based tests against invariants like "percentile ranks are always in [0, 100]." Integration tests cover live graph routing, the HITL approve/reject/modify paths, sub-agent-to-chat synthesis, and message sanitization against deliberately poisoned state. Write tools are sentinel-intercepted during tests, so no row ever reaches Snowflake from a test run.
 
-### 4. Deploy to GCP
+### Deploy to GCP
 
 ```bash
-make all       # build → push → upload → deploy API+Redis+FE+MCP → deploy Airflow → status
+make all
 ```
 
-Idempotent. Creates the VM if missing, opens firewall rules, creates the Artifact Registry repo, promotes the VM's IP to static. Safe to re-run.
+This builds all images, pushes them to Artifact Registry, bundles the project, copies it to the VM, and brings up API, Redis, Frontend, MCP, and Airflow. It is idempotent. The VM is created if missing, firewall rules are created if missing, the Artifact Registry repo is created if missing, and the VM's external IP is promoted to static the first time it runs.
 
-**Incremental redeploys:**
+For everyday changes, the incremental commands are faster:
+
 ```bash
-make redeploy      # rebuild + push + redeploy API (keeps Redis/Airflow running)
-make redeploy-fe   # rebuild + push + redeploy Frontend only
+make redeploy      # rebuild, push, and redeploy the API only
+make redeploy-fe   # rebuild, push, and redeploy the frontend only
 make deploy-af     # redeploy Airflow only
 ```
 
-**Operations:**
+Operational commands:
+
 ```bash
-make status        # live health of all services on the VM
+make status        # live health of every service on the VM
 make ssh           # SSH into the VM
-make expose-af     # open Airflow UI (port 8081)
+make expose-af     # open Airflow UI on port 8081
 make hide-af       # close it again
 ```
 
-Airflow UI access is off by default. Enable only when needed.
+The Airflow UI firewall is closed by default. Open it only when you need to inspect a run.
 
-### 5. Daily commands
+### The five commands you run daily
 
-| Command | When to run |
+| Command | When |
 |---|---|
-| `make up` | Local dev, every morning |
+| `make up` | Start the local stack |
 | `make test` | Before every commit |
-| `make redeploy` | Push an API change to prod |
-| `make status` | Verify prod health |
+| `make redeploy` | Ship an API change to production |
+| `make status` | Verify production health |
 | `make all` | Full clean deploy from scratch |
 
 ---
 
 ## Observability
 
-- **Structured logs** — every component binds `trace_id`, `session_id`, and `pipeline_run_id` via `structlog`. One grep follows a request end-to-end across the agent graph, tools, and downstream services.
-- **Per-turn cost tracking** — chat turns write a row to `RAW.LLM_USAGE_LOG` (model, tokens, duration, cost) with `source='chat'`, sharing the same schema as pipeline runs.
-- **Airflow Slack** — pipeline start + completion summary, with failed-task breakdown and direct log links. Falls silent if no webhook configured.
-- **Health endpoint** — `/healthz` verifies Snowflake, Redis, and Pinecone connectivity.
+Every component binds `trace_id`, `session_id`, and `pipeline_run_id` through `structlog`. A single grep follows any request end to end across the agent graph, the tools it called, and the downstream services those tools hit. Each chat turn writes a row to `RAW.LLM_USAGE_LOG` with model, token counts, duration, and cost, sharing the same schema as pipeline-side LLM usage so both can be analyzed together. The `/healthz` endpoint verifies Snowflake, Redis, and Pinecone connectivity and is used by `make status` to probe the deployed VM. Airflow Slack notifications cover pipeline lifecycle events with log links.
 
 ---
 
@@ -227,13 +246,25 @@ Airflow UI access is off by default. Enable only when needed.
 | Agents | LangGraph, LiteLLM (DeepSeek primary, GPT-4o fallback) |
 | API | FastAPI, Starlette SSE, MCP (streamable-HTTP) |
 | Data | Snowflake, Pinecone, Redis, AWS S3 |
-| Orchestration | Airflow (CeleryExecutor), Docker Compose |
+| Orchestration | Airflow, Docker Compose |
 | Frontend | React, nginx |
 | Cloud | GCP Compute Engine, Artifact Registry |
+| IaC | Terraform (Snowflake provider) |
 | Testing | pytest, pytest-asyncio, Hypothesis |
 
 ---
 
-## License
+## Infrastructure as Code
 
-See `LICENSE`.
+Snowflake infrastructure is defined in Terraform under `infra/` using the `Snowflake-Labs/snowflake` provider with local state. Terraform manages the `VICEV` database and its three schemas (`RAW`, `SCORECARDS`, `USER_DATA`), the `VICINEV` warehouse with auto-suspend, the application service user, and two roles with carefully scoped grants.
+
+The two-role split matters. The application role (`VICIN_DEV`) has full read and write access on all three schemas, and is used by FastAPI routers and Airflow pipelines. The read-only role (`VICINITY_RAG_READONLY_DEV`) has `SELECT` on current and future tables and views, nothing more, and is used by the chat agent's SQL templates. This means a prompt injection attempting to run `DROP TABLE` fails at the Snowflake permission layer, not just at the prompt-engineering layer. Defense in depth rather than defense by prompt.
+
+Both roles use `FUTURE` grants, so any new table or view created later automatically inherits the right permissions without a Terraform re-apply for every schema change.
+
+```bash
+cd infra
+terraform init
+terraform plan  -var-file=dev.tfvars
+terraform apply -var-file=dev.tfvars
+```
