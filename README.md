@@ -4,11 +4,10 @@ A multi-agent system that helps people find safe, livable apartments in Boston. 
 
 | Resource | Link |
 |---|---|
-| Live Demo | |
-| Docs | |
-| Airflow UI | |
-| Video | |
-| Codelabs | |
+| Live Demo | http://34.74.93.251/ |
+| Airflow UI | http://34.74.93.251:8081/home |
+| Video | https://drive.google.com/file/d/1xDGmqu0cMbNz301FedOs6BJmBzkczSgB/view?usp=sharing |
+| Codelabs | codelab : https://codelabs-preview.appspot.com/?file_id=https://docs.google.com/document/d/1RL4SLb7kKuK6XFmw_rsKU6Oitw7c9-MyDHH9g4wFWRI/edit?usp=sharing#1 |
 
 **DAMG 7245 — Big Data and Intelligent Analytics**
 
