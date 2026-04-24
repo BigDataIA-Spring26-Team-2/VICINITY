@@ -22,48 +22,13 @@ Design decisions:
     user approved can be reconstructed after interrupt() resumes.
   - All config-driven limits (max tool calls, timeouts) are read from
     config/agents.yml at graph construction time, not stored in state.
-
-Reroute / bounce architecture (added fields):
-
-  reroute_count: int
-    How many times the graph has returned to input_gate during a single
-    user turn due to a sub-agent bounce or a chat_agent [ROUTE: ...]
-    marker. Capped at MAX_REROUTES in graph.py; the third attempt
-    forces route=chat as the universal fallback.
-
-  reroute_history: list[RerouteRecord] (operator.add reducer)
-    Append-only log of route attempts this turn. The input_gate reads
-    this on re-entry to avoid re-picking the same failed route, and
-    to understand WHY previous attempts failed so its next pick is
-    informed, not just different.
-
-  gate_reasoning: str
-    The most recent input_gate's "reason" field. Propagated so every
-    downstream agent can see why it was invoked — a sub-agent that
-    knows the gate said "user is asking for a 2BR search" will bounce
-    or proceed with more confidence than one that only sees the raw
-    user message.
-
-Sub-agent result status vocabulary (CANONICAL — keep in sync with
-chat_agent system prompt's SUB-AGENT RESULT HANDLING section):
-
-  complete       — Real content in .content. Chat synthesizes it.
-  empty          — Tool ran but found nothing actionable.
-  error          — Tool or LLM error; chat explains gracefully.
-  bounce         — Wrong agent for this query. Graph routes back to
-                   input_gate, which re-classifies with the history hint.
-  auth_required  — User must sign in (Organizer only).
-  rejected       — User rejected the Organizer proposal.
-  modified       — User modified the Organizer proposal.
-  no_action      — Agent had nothing to do (Organizer clarification
-                   question with no tool calls).
 """
 
 from __future__ import annotations
 
 import operator
 import uuid
-from typing import Annotated, Any, Optional, TypedDict
+from typing import Annotated, Optional, TypedDict
 
 from langgraph.graph.message import add_messages
 
@@ -73,25 +38,12 @@ class UserContext(TypedDict, total=False):
 
     Loaded from Snowflake before graph invocation.
     Passed through state unchanged — agents read, only Organizer writes to DB.
-
-    USER IDENTITY INVARIANT:
-        If user_id is present and non-empty, the user IS signed in.
-        There is no separate "authenticated" flag. All four agents
-        treat user_id truthiness as proof of authentication. This
-        simplifies reasoning: anyone with user_id has full access;
-        anyone without it is anonymous (read-only via Chat Agent).
-
-        Any bookmarks, preferences, routes, or session_summaries
-        that accompany a user_id belong to THAT SAME USER. A previous
-        session loaded into context means the same human is continuing
-        their journey across sessions — never cross-user contamination.
     """
     user_id: str
     session_id: str
     email: str
     display_name: str
 
-    # From SEARCH_PROFILES (latest active)
     profile_id: str
     work_address: str
     work_lat: float
@@ -104,10 +56,7 @@ class UserContext(TypedDict, total=False):
     preferences_text: str
     preference_tags: list[str]
 
-    # From SESSION_SUMMARIES (N most recent)
     recent_summaries: list[dict]
-
-    # From BOOKMARKED_LISTINGS (active bookmarks)
     active_bookmarks: list[dict]
 
 
@@ -136,52 +85,91 @@ class ConfirmationPayload(TypedDict):
     tool_calls: list[dict]
 
 
-class RerouteRecord(TypedDict, total=False):
-    """One entry in reroute_history.
+class HandoffPayload(TypedDict, total=False):
+    """Sequential-routing instruction written by the input gate.
 
-    Written each time the graph re-enters input_gate after a
-    sub-agent bounce or a chat_agent [ROUTE: ...] marker. The gate
-    reads history entries to avoid re-picking the same failed route
-    and to understand why each attempt failed.
+    When the gate classifies a compound intent ("find X and bookmark
+    the cheapest"), it picks the DOMINANT route to run first and
+    records the follow-up step here. After the primary sub-agent
+    finishes (no pending tool_calls), the graph reads this field and
+    routes to the secondary agent instead of terminating.
+
+    Only search -> organizer is supported as a handoff today. search
+    -> chat collapses to the existing flow (chat always runs last for
+    search/report). organizer handoffs are not supported because
+    organizer writes are already terminal by design (the user sees
+    confirmation and then a chat synthesis).
+
+    Fields:
+      route:  "organizer" — the agent to invoke after the primary.
+      intent: natural-language description of the follow-up, e.g.
+              "bookmark the cheapest of the returned listings".
+              Injected as a HumanMessage before organizer_plan runs so
+              the organizer knows what to do with the primary's output.
     """
-    from_agent: str          # "search" | "report" | "organizer" | "chat"
-    reason: str              # Human-readable why the reroute happened
-    original_route: str      # The route that was attempted
-    trigger: str             # "bounce" | "marker"
-    gate_reasoning: str      # The gate's reason for the failed pick
+    route: str
+    intent: str
+
+
+class OrganizerEvent(TypedDict, total=False):
+    """Structured organizer outcome written to state for chat_react to present.
+
+    The organizer no longer emits user-visible AIMessages. All of its
+    outcomes — confirmation previews, rejections, clarifications,
+    auth failures, and completed writes — flow through this state
+    field. chat_react reads it and produces the single user-facing
+    response for the turn. This preserves the "one voice" principle:
+    the user only ever sees one assistant, not a committee.
+
+    Fields (populated based on kind):
+      kind:             preview | completed | rejected | auth_required | clarification
+      tool:             tool name (e.g. "manage_bookmarks")
+      summary:          human-readable one-liner of the planned or
+                        completed operation (e.g. "Bookmark listing
+                        f5c501f28d2ff86d with 14-day watch")
+      params:           the tool arguments (for preview; used by UI)
+      result:           tool result dict for kind=="completed"
+      message:          clarification prose for kind=="clarification"
+    """
+    kind: str
+    tool: str
+    summary: str
+    params: dict
+    result: dict
+    message: str
 
 
 class AgentState(TypedDict, total=False):
     """Shared state flowing through the entire Vicinity agent graph.
 
-    Fields (existing):
-        messages:             LangGraph message list with add_messages reducer.
-        route:                Intent from input_gate: chat|organizer|search|report|confirm|block.
-        user_context:         Pre-loaded user profile. Read-only during graph execution.
-        sub_agent_result:     Compact dict from sub-agents for Chat Agent synthesis.
-        pending_confirmation: Organizer write preview awaiting user approval.
-        tool_call_count:      Running total of tool invocations this turn.
-        tool_call_ledger:     Append-only log of every tool call (operator.add reducer).
-        query_cost_usd:       Accumulated LLM token cost for this invocation.
-        trace_id:             Unique ID for this graph invocation.
-        is_valid:             False if input_gate blocked the query.
-        empty_retries:        Guardrail empty-response retry counter.
-        error:                Set on unrecoverable failure. Graph routes to END.
-
-    Fields (reroute architecture):
-        reroute_count:        Times the graph has re-entered input_gate this turn.
-                              Capped at MAX_REROUTES in graph.py; third attempt
-                              forces route=chat.
-        reroute_history:      Append-only log of route attempts (RerouteRecord list).
-                              Gate reads it on re-entry for informed reclassification.
-        gate_reasoning:       Latest gate's reason, propagated so sub-agents know
-                              WHY they were selected.
+    Fields:
+        messages:               LangGraph message list with add_messages reducer.
+        route:                  Intent from input_gate: chat|organizer|search|report|confirm|block.
+        user_context:           Pre-loaded user profile. Read-only during graph execution.
+        sub_agent_result:       Compact dict from sub-agents for Chat Agent synthesis.
+        pending_confirmation:   Organizer write preview awaiting user approval.
+        pending_handoff:        Sequential-routing instruction for compound intents.
+                                Set by input_gate when the user asks for two things in one turn.
+                                Cleared by the handoff dispatcher before the secondary agent runs.
+        organizer_event:        Structured organizer outcome for chat_react to present to the user.
+                                Organizer nodes write this INSTEAD of emitting user-visible
+                                AIMessages. chat_react reads it and produces a natural-language
+                                single-voice response covering the organizer's action.
+        tool_call_count:        Running total of tool invocations this turn.
+        tool_call_ledger:       Append-only log of every tool call (operator.add reducer).
+        query_cost_usd:         Accumulated LLM token cost for this invocation.
+        trace_id:               Unique ID for this graph invocation.
+        is_valid:               False if input_gate blocked the query.
+        empty_retries:          Guardrail empty-response retry counter.
+        error:                  Set on unrecoverable failure. Graph routes to END.
     """
     messages: Annotated[list, add_messages]
     route: str
     user_context: UserContext
     sub_agent_result: Optional[dict]
     pending_confirmation: Optional[ConfirmationPayload]
+    pending_handoff: Optional[HandoffPayload]
+    organizer_event: Optional[OrganizerEvent]
     tool_call_count: int
     tool_call_ledger: Annotated[list[ToolCallRecord], operator.add]
     query_cost_usd: float
@@ -189,11 +177,6 @@ class AgentState(TypedDict, total=False):
     is_valid: bool
     empty_retries: int
     error: Optional[str]
-
-    # Reroute-bounce architecture
-    reroute_count: int
-    reroute_history: Annotated[list[RerouteRecord], operator.add]
-    gate_reasoning: str
 
 
 def create_initial_state(
@@ -213,6 +196,8 @@ def create_initial_state(
         "user_context": user_context,
         "sub_agent_result": None,
         "pending_confirmation": None,
+        "pending_handoff": None,
+        "organizer_event": None,
         "tool_call_count": 0,
         "tool_call_ledger": [],
         "query_cost_usd": 0.0,
@@ -220,9 +205,4 @@ def create_initial_state(
         "is_valid": True,
         "empty_retries": 0,
         "error": None,
-        # Reroute-bounce fields — start empty, only populated on
-        # a sub-agent bounce or chat_agent [ROUTE: ...] marker.
-        "reroute_count": 0,
-        "reroute_history": [],
-        "gate_reasoning": "",
     }
